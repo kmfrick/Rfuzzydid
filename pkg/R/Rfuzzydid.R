@@ -90,6 +90,9 @@ wald_tc = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 		elem = y10[i] + delta_d[[as.character(d10[i])]]
 		sum_corrections = sum_corrections + elem
 	}
+
+	#print(paste0("E[y11] = ", mean(y11), "; E[y10+delta_d] = ", sum_corrections / n10))
+	#print(paste0("E[d10] = ", mean(d11), "; E[d10] = ", mean(d10)))
 	numerator = mean(y11) - (sum_corrections / n10)
 	denominator = mean(d11) - mean(d10)
 
@@ -123,24 +126,32 @@ wald_cic = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 	y10 = df[df[[g_name]] == 1 & df[[t_name]] == 0, y_name]
 	d10 = df[df[[g_name]] == 1 & df[[t_name]] == 0, d_name]
 	n10 = length(y10)
-	sum_corrections = 0
 
-	ffd = list()
-	miny_d01 = list()
+	Fy_d00 = list()
+	Fy_d01 = list()
+	Qy_d01 = list()
 	for (d in unique(df[[d_name]])) {
 		D = as.character(d)
-		Fy_d00 = ecdf(df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 0, y_name])
-		Qy_d01 = function(y) quantile(df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 1, y_name], y)
-		ffd[[D]] = function(y) Qy_d01(Fy_d00(y))
-		miny_d01[[D]] = min(df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 1, y_name])
+		y_d00 = df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 0, y_name]
+		y_d01 = df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 1, y_name]
+		Fy_d00[[D]] = ecdf(y_d00)
+		Fy_d01[[D]] = ecdf(y_d01)
+		Qy_d01[[D]] = function(y) {
+			cdf_values = Fy_d00[[D]](y)
+			quantiles_d01 = quantile(y_d01, cdf_values, names = FALSE)
+			quantiles_d01[cdf_values < min(Fy_d01[[D]](y_d01))] = min(y_d01)
+			return(quantiles_d01)
+		}
 	}
 
-
+	sum_corrections = 0
 	for (i in 1:n10) {
 		D = as.character(d10[i])
-		Qd = max(ffd[[D]](y10[i]), miny_d01[[D]]) 
+		Qd = Qy_d01[[D]](y10[i])
 		sum_corrections = sum_corrections + Qd
 	}
+	#print(paste0("E[y11] = ", mean(y11), "; E[Qd] = ", sum_corrections / n10))
+	#print(paste0("E[d10] = ", mean(d11), "; E[d10] = ", mean(d10)))
 	numerator = mean(y11) - (sum_corrections / n10)
 	denominator = mean(d11) - mean(d10)
 
@@ -218,4 +229,31 @@ summary.fuzzydid = function(object, ...) {
 
 	kable(summary_df, caption = "Summary of Estimators")
 }
+
+#' @title tidy.fuzzydid
+#' @description tidy for modelsummary
+#' @param x A fuzzydid object
+#' @param ... Extra arguments are ignored
+#' @exportS3method Rfuzzydid::tidy
+tidy.fuzzydid = function(x, ...) {
+    ret = data.frame(
+        term = names(x$b),
+        estimate = unlist(x$b),
+        std.error = unlist(x$boot_se),
+        conf.low = sapply(x$ci95, `[[`, 1),
+        conf.high = sapply(x$ci95, `[[`, 2)
+    )
+    ret
+}
+
+#' @title glance.fuzzydid
+#' @description glance for modelsummary
+#' @param x A fuzzydid object
+#' @param ... Extra arguments are ignored
+#' @exportS3method Rfuzzydid::glance
+glance.fuzzydid = function(x, ...) {
+	ret = NULL
+	ret
+}
+
 
