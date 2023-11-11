@@ -1,0 +1,3 @@
+import(bootstrap)
+importFrom("stats", "as.formula", "lm", "predict", "quantile", "sd")
+importFrom("knitr", "kable")
