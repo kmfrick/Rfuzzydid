@@ -1,5 +1,4 @@
 #' @title wald_did
-#' @export
 #' @description  Computes the Wald-DiD estimator, equivalent to an IV regression of y on d with
 #' g and t as included instruments and g:t as the excluded instrument for d
 #' @param i Rows of the data frame to operate on
@@ -9,6 +8,7 @@
 #' @param t_name Time period variable
 #' @param d_name Treatment variable, can be any ordered variable
 #' @param X_name Covariates to include
+#' @export
 wald_did = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 	df = df[i,]
 #	select_df = function(g, t, var) {
@@ -142,9 +142,9 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 }
 
 #' @title summary.fuzzydid
-#' @export
 #' @description Displays the estimations in a table
 #' @param object A fuzzydid object
+#' @export
 summary.fuzzydid <- function(object) {
   b <- object$b
   boot_se <- object$boot_se
