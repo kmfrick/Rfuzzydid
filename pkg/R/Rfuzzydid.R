@@ -11,14 +11,6 @@
 #' @importFrom stats "as.formula" "lm" "predict"
 wald_did = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 	df = df[i,]
-#	select_df = function(g, t, var) {
-#		return(df[df[[g_name]] == g & df[[t_name]] == t, var])
-#	}
-#	if (is.null(X_name)) {
-#		numerator = mean(select_df(1, 1, y_name), na.rm=TRUE) - mean(select_df(1, 0, y_name), na.rm=TRUE) - mean(select_df(0, 1, y_name), na.rm=TRUE) + mean(select_df(0, 0, y_name), na.rm=TRUE)
-#		denominator = mean(select_df(1, 1, d_name), na.rm=TRUE) - mean(select_df(1, 0, d_name), na.rm=TRUE) - mean(select_df(0, 1, d_name), na.rm=TRUE) + mean(select_df(0, 0, d_name), na.rm=TRUE)
-#		return(numerator/denominator)
-#	}
 	if(is.null(X_name)) {
 		X_name = "wdidconstwdid"
 		df[[X_name]] = 1
@@ -105,6 +97,57 @@ wald_tc = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 	return(wtc)
 }
 
+
+
+#' @title wald_cic
+#' @description  Computes the Wald-CiC estimator
+#' @param i Rows of the data frame to operate on
+#' @param df Data frame to operate on
+#' @param y_name Outcome variable
+#' @param g_name Group variable
+#' @param t_name Time period variable
+#' @param d_name Treatment variable, can be any ordered variable
+#' @param X_name Covariates to include
+#' @importFrom stats "ecdf" "quantile"
+wald_cic = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
+	df = df[i,]
+	if (is.null(X_name)) {
+		X_name = "wcicconstwcic"
+		df[[X_name]] = 1
+	}
+
+
+	y11 = df[df[[g_name]] == 1 & df[[t_name]] == 1, y_name]
+	d11 = df[df[[g_name]] == 1 & df[[t_name]] == 1, d_name]
+	n11 = length(y11)
+	y10 = df[df[[g_name]] == 1 & df[[t_name]] == 0, y_name]
+	d10 = df[df[[g_name]] == 1 & df[[t_name]] == 0, d_name]
+	n10 = length(y10)
+	sum_corrections = 0
+
+	ffd = list()
+	miny_d01 = list()
+	for (d in unique(df[[d_name]])) {
+		D = as.character(d)
+		Fy_d00 = ecdf(df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 0, y_name])
+		Qy_d01 = function(y) quantile(df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 1, y_name], y)
+		ffd[[D]] = function(y) Qy_d01(Fy_d00(y))
+		miny_d01[[D]] = min(df[df[[d_name]] == d & df[[g_name]] == 0 & df[[t_name]] == 1, y_name])
+	}
+
+
+	for (i in 1:n10) {
+		D = as.character(d10[i])
+		Qd = max(ffd[[D]](y10[i]), miny_d01[[D]]) 
+		sum_corrections = sum_corrections + Qd
+	}
+	numerator = mean(y11) - (sum_corrections / n10)
+	denominator = mean(d11) - mean(d10)
+
+	wcic = numerator / denominator
+	return(wcic)
+}
+
 #' @title fuzzydid
 #' @description Computes the corrected LATE estimators as in de Chaisemartin and D'Haultfoeuille (2018)
 #' <doi:10.1093/restud/rdx049>
@@ -114,12 +157,12 @@ wald_tc = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 #' @param t_name Time period variable
 #' @param d_name Treatment variable, can be any ordered variable
 #' @param X_name Covariates to include
-#' @param est Estimators to compute. Should contain at least one of "did", "tc"
+#' @param est Estimators to compute. Should contain at least one of "did", "tc", "cic"
 #' @param nboot Number of bootstrap samples for standard errors
 #' @importFrom bootstrap "bootstrap"
 #' @importFrom stats "quantile" "sd"
 #' @export
-fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("did", "tc"), nboot = 50) {
+fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("did", "tc", "cic"), nboot = 50) {
 	b = list()
 	boot_se = list()
 	ci95 = list()
@@ -139,6 +182,15 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 		boot_se[["tc"]] = sd(boot$thetastar)
 		ci95[["tc"]] = quantile(boot$thetastar, c(0.05, 0.95))
 	}
+
+	if ("cic" %in% est) {
+		print("Computing WCIC...")
+		b[["cic"]] = wald_cic(1:nrow(df), df, y_name, g_name, t_name, d_name)
+		boot = bootstrap(1:nrow(df), 50, wald_cic, df, y_name, g_name, t_name, d_name)
+		boot_se[["cic"]] = sd(boot$thetastar)
+		ci95[["cic"]] = quantile(boot$thetastar, c(0.05, 0.95))
+	}
+
 	result = list("b" = b, "boot_se" = boot_se, "ci95" = ci95)
 	class(result) = "fuzzydid"
 	return(result)
@@ -150,12 +202,12 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 #' @param ... Extra arguments are ignored
 #' @importFrom knitr "kable"
 #' @exportS3Method Rfuzzydid::summary
-summary.fuzzydid <- function(object, ...) {
-  b <- object$b
-  boot_se <- object$boot_se
-  ci95 <- object$ci95
+summary.fuzzydid = function(object, ...) {
+  b = object$b
+  boot_se = object$boot_se
+  ci95 = object$ci95
 
-  summary_df <- data.frame(
+  summary_df = data.frame(
     Estimator = paste0("W_", toupper(names(b))),
     Point_Estimate = unlist(b),
     Bootstrap_SE = unlist(boot_se),

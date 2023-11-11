@@ -11,7 +11,7 @@ fuzzydid(
   t_name,
   d_name,
   X_name = NULL,
-  est = c("did", "tc"),
+  est = c("did", "tc", "cic"),
   nboot = 50
 )
 }
@@ -28,7 +28,7 @@ fuzzydid(
 
 \item{X_name}{Covariates to include}
 
-\item{est}{Estimators to compute. Should contain at least one of "did", "tc"}
+\item{est}{Estimators to compute. Should contain at least one of "did", "tc", "cic"}
 
 \item{nboot}{Number of bootstrap samples for standard errors}
 }
