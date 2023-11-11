@@ -177,9 +177,11 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 	b = list()
 	boot_se = list()
 	ci95 = list()
+	d_outp = list()
 
 	if ("did" %in% est) {
-		print("Computing WDID...")
+		print("Computing W_DID...")
+		d_outp[["did"]] = d_name
 		b[["did"]] = wald_did(1:nrow(df), df, y_name, g_name, t_name, d_name)
 		boot = bootstrap(1:nrow(df), 50, wald_did, df, y_name, g_name, t_name, d_name)
 		boot_se[["did"]] = sd(boot$thetastar)
@@ -187,7 +189,8 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 	}
 
 	if ("tc" %in% est) {
-		print("Computing WTC...")
+		print("Computing W_TC...")
+		d_outp[["tc"]] = d_name
 		b[["tc"]] = wald_tc(1:nrow(df), df, y_name, g_name, t_name, d_name)
 		boot = bootstrap(1:nrow(df), 50, wald_tc, df, y_name, g_name, t_name, d_name)
 		boot_se[["tc"]] = sd(boot$thetastar)
@@ -195,16 +198,16 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 	}
 
 	if ("cic" %in% est) {
-		print("Computing WCIC...")
+		print("Computing W_CIC...")
+		d_outp[["cic"]] = d_name
 		b[["cic"]] = wald_cic(1:nrow(df), df, y_name, g_name, t_name, d_name)
 		boot = bootstrap(1:nrow(df), 50, wald_cic, df, y_name, g_name, t_name, d_name)
 		boot_se[["cic"]] = sd(boot$thetastar)
 		ci95[["cic"]] = quantile(boot$thetastar, c(0.05, 0.95))
 	}
-
-	result = list("b" = b, "boot_se" = boot_se, "ci95" = ci95)
+	result = list("d_outp" = d_outp, "b" = b, "boot_se" = boot_se, "ci95" = ci95)
 	class(result) = "fuzzydid"
-	return(result)
+	result
 }
 
 #' @title summary.fuzzydid
@@ -234,10 +237,12 @@ summary.fuzzydid = function(object, ...) {
 #' @description tidy for modelsummary
 #' @param x A fuzzydid object
 #' @param ... Extra arguments are ignored
-#' @exportS3method Rfuzzydid::tidy
+#' @importFrom broom "tidy"
+#' @export
 tidy.fuzzydid = function(x, ...) {
     ret = data.frame(
-        term = names(x$b),
+				model = paste0("W_", toupper(names(x$b))),
+				term = unlist(x$d_outp),
         estimate = unlist(x$b),
         std.error = unlist(x$boot_se),
         conf.low = sapply(x$ci95, `[[`, 1),
@@ -250,9 +255,10 @@ tidy.fuzzydid = function(x, ...) {
 #' @description glance for modelsummary
 #' @param x A fuzzydid object
 #' @param ... Extra arguments are ignored
-#' @exportS3method Rfuzzydid::glance
+#' @importFrom broom "glance"
+#' @export
 glance.fuzzydid = function(x, ...) {
-	ret = NULL
+	ret = data.frame()
 	ret
 }
 
