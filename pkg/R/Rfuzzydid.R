@@ -8,7 +8,7 @@
 #' @param t_name Time period variable
 #' @param d_name Treatment variable, can be any ordered variable
 #' @param X_name Covariates to include
-#' @export
+#' @importFrom stats "as.formula" "lm" "predict"
 wald_did = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 	df = df[i,]
 #	select_df = function(g, t, var) {
@@ -116,6 +116,9 @@ wald_tc = function(i, df, y_name, g_name, t_name, d_name, X_name = NULL){
 #' @param X_name Covariates to include
 #' @param est Estimators to compute. Should contain at least one of "did", "tc"
 #' @param nboot Number of bootstrap samples for standard errors
+#' @importFrom bootstrap "bootstrap"
+#' @importFrom stats "quantile" "sd"
+#' @export
 fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("did", "tc"), nboot = 50) {
 	b = list()
 	boot_se = list()
@@ -144,8 +147,10 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 #' @title summary.fuzzydid
 #' @description Displays the estimations in a table
 #' @param object A fuzzydid object
-#' @export
-summary.fuzzydid <- function(object) {
+#' @param ... Extra arguments are ignored
+#' @importFrom knitr "kable"
+#' @exportS3Method Rfuzzydid::summary
+summary.fuzzydid <- function(object, ...) {
   b <- object$b
   boot_se <- object$boot_se
   ci95 <- object$ci95
@@ -159,6 +164,6 @@ summary.fuzzydid <- function(object) {
   )
 	rownames(summary_df) = NULL
 
-  knitr::kable(summary_df, caption = "Summary of Estimators")
+	kable(summary_df, caption = "Summary of Estimators")
 }
 
