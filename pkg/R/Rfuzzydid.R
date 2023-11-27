@@ -205,7 +205,12 @@ fuzzydid = function(df, y_name, g_name, t_name, d_name, X_name = NULL, est = c("
 		boot_se[["cic"]] = sd(boot$thetastar)
 		ci95[["cic"]] = quantile(boot$thetastar, c(0.05, 0.95))
 	}
-	result = list("d_outp" = d_outp, "b" = b, "boot_se" = boot_se, "ci95" = ci95)
+	result = list("d_outp" = d_outp, "b" = b, "boot_se" = boot_se, "ci95" = ci95, n = nrow(df),
+	n11 = sum(df[[g_name]] == 1 & df[[t_name]] == 1),
+	n10 = sum(df[[g_name]] == 1 & df[[t_name]] == 0),
+	n01 = sum(df[[g_name]] == 0 & df[[t_name]] == 1),
+	n00 = sum(df[[g_name]] == 0 & df[[t_name]] == 0)
+	)
 	class(result) = "fuzzydid"
 	result
 }
@@ -242,7 +247,7 @@ summary.fuzzydid = function(object, ...) {
 tidy.fuzzydid = function(x, ...) {
     ret = data.frame(
 				model = paste0("W_", toupper(names(x$b))),
-				term = unlist(x$d_outp),
+				term = paste0("fit_", unlist(x$d_outp)),
         estimate = unlist(x$b),
         std.error = unlist(x$boot_se),
         conf.low = sapply(x$ci95, `[[`, 1),
@@ -258,7 +263,12 @@ tidy.fuzzydid = function(x, ...) {
 #' @importFrom broom "glance"
 #' @export
 glance.fuzzydid = function(x, ...) {
-	ret = data.frame()
+	ret = data.frame("Num.Obs." = x$n,
+									 "N.11" = x$n11,
+	"N.10" = x$n10,
+	"N.01" = x$n01,
+	"N.00" = x$n00
+	)
 	ret
 }
 
