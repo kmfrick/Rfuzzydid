@@ -1,0 +1,7 @@
+^\.DS_Store$
+^\.Rcheck$
+^\.\.?Rcheck$
+^Rfuzzydid\.Rcheck$
+^Rfuzzydid_.*\.tar\.gz$
+^vignettes/.*\.html$
+^vignettes/stata_parity_capture.*\.log$
