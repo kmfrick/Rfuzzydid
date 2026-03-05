@@ -26,7 +26,8 @@ fuzzydid(
   sieveorder = NULL,
   tagobs = FALSE,
   backend = c("auto", "native", "stata"),
-  seed = 1
+  seed = 1,
+  treatment = NULL
 )
 }
 \arguments{
@@ -54,7 +55,7 @@ treatment values for TC/CIC.}
 
 \item{cluster}{Optional name of cluster variable for clustered bootstrap.}
 
-\item{breps}{Number of bootstrap replications.}
+\item{breps}{Integer number of bootstrap replications.}
 
 \item{eqtest}{Logical; compute equality tests across requested LATE estimands.}
 
@@ -77,6 +78,9 @@ supported and errors.}
 
 \item{seed}{Preserved for API compatibility. Bootstrap inference uses a
 fixed Stata-parity seed (`1`) when `nose = FALSE`.}
+
+\item{treatment}{Optional treatment variable name for multi-term formulas.
+If `NULL`, treatment is inferred from formula RHS when unambiguous.}
 }
 \value{
 An object of class `fuzzydid`.

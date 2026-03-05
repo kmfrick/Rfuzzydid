@@ -67,6 +67,47 @@ test_that("formula API works on native backend", {
   expect_true(!is.null(fit$matrices$b_LATE))
 })
 
+test_that("treatment is explicit and robust to RHS ordering", {
+  df <- make_covariate_fixture()
+
+  fit_explicit_1 <- fuzzydid(
+    data = df,
+    formula = y ~ d + x1,
+    treatment = "d",
+    group = "g",
+    time = "t",
+    did = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  fit_explicit_2 <- fuzzydid(
+    data = df,
+    formula = y ~ x1 + d,
+    treatment = "d",
+    group = "g",
+    time = "t",
+    did = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_equal(fit_explicit_1$late$estimate, fit_explicit_2$late$estimate, tolerance = 1e-12)
+
+  expect_error(
+    fuzzydid(
+      data = df,
+      formula = y ~ x1 + x2,
+      group = "g",
+      time = "t",
+      did = TRUE,
+      nose = TRUE,
+      backend = "native"
+    ),
+    "Unable to infer treatment"
+  )
+})
+
 
 test_that("bootstrap summary drops Stata sentinel reps", {
   reps <- matrix(
@@ -276,6 +317,38 @@ test_that("strict restrictions mirror Stata-style constraints", {
       backend = "native"
     ),
     "more than two periods"
+  )
+
+  expect_error(
+    fuzzydid(
+      data = make_native_fixture(),
+      formula = y ~ d,
+      group = "g",
+      time = "t",
+      did = TRUE,
+      breps = 2.5,
+      backend = "native"
+    ),
+    "integer scalar >= 2"
+  )
+})
+
+test_that("group_forward value check message includes -3", {
+  df <- make_group_forward_fixture()
+  df$gb[1] <- 2
+
+  expect_error(
+    fuzzydid(
+      data = df,
+      formula = y ~ d,
+      group = "gb",
+      group_forward = "gf",
+      time = "t",
+      did = TRUE,
+      nose = TRUE,
+      backend = "native"
+    ),
+    "\\{-3,-1,0,1,NA\\}"
   )
 })
 

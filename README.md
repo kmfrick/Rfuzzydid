@@ -29,7 +29,8 @@ fuzzydid(
   sieveorder = NULL,
   tagobs = FALSE,
   backend = c("auto", "native"),
-  seed = 1
+  seed = 1,
+  treatment = NULL
 )
 ```
 
@@ -40,7 +41,8 @@ fuzzydid(
 **Arguments:**
 
 - `data`: Data frame containing all variables.
-- `formula`: A formula of the form `y ~ d` or `y ~ d + x1 + x2`, where `y` is the outcome variable, `d` is the treatment variable, and `x1`, `x2`, etc. are covariates.
+- `formula`: A formula of the form `y ~ d` or `y ~ d + x1 + x2`, where `y` is the outcome variable and RHS terms include treatment plus optional covariates.
+- `treatment`: Optional treatment variable name for multi-term formulas. If omitted, treatment is inferred when unambiguous (single RHS term, or a unique `d` term).
 - `group`: Name of the group variable (backward group for multi-period designs). See Section 4.2 of [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019) for details on constructing this variable.
 - `time`: Name of the time period variable.
 - `group_forward`: Optional name of the forward group variable for multi-period designs.
@@ -71,7 +73,7 @@ At least one of `did`, `tc`, `cic`, or `lqte` must be specified. If several are 
 
 - `nose`: Logical; compute only point estimates, not standard errors.
 - `cluster`: Name of cluster variable for block bootstrap. Only one clustering variable is allowed.
-- `breps`: Number of bootstrap replications. Default is 50.
+- `breps`: Integer number of bootstrap replications. Default is 50.
 - `eqtest`: Logical; perform equality tests between estimands when at least two of `did`, `tc`, `cic` are specified.
 
 **Covariates:**

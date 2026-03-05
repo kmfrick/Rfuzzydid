@@ -116,3 +116,31 @@ test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
     tolerance = 1e-6
   )
 })
+
+test_that("clustered bootstrap diagnostics satisfy parity invariants", {
+  df <- make_parity_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    cluster = "cl",
+    breps = 20,
+    backend = "native",
+    seed = 1
+  )
+
+  expect_equal(as.integer(fit$n_reps), 20L)
+  expect_true(as.integer(fit$n_misreps) >= 0L)
+  expect_true(as.integer(fit$n_misreps) <= as.integer(fit$n_reps))
+  expect_equal(
+    as.numeric(fit$share_failures),
+    as.numeric(fit$n_misreps) / as.numeric(fit$n_reps),
+    tolerance = 1e-12
+  )
+  expect_true(as.integer(fit$n_misreps) > 0L)
+})

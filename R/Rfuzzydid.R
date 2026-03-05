@@ -4,6 +4,8 @@
 #' Estimation is fully native in R.
 #' @param data Data frame.
 #' @param formula Formula of the form `y ~ d + covariates`.
+#' @param treatment Optional treatment variable name for multi-term formulas.
+#'   If `NULL`, treatment is inferred from formula RHS when unambiguous.
 #' @param group Name of the group variable (backward group for multi-period).
 #' @param time Name of the time variable.
 #' @param group_forward Optional name of the forward group variable for
@@ -15,7 +17,7 @@
 #' @param partial Logical; request TC partial-identification bounds.
 #' @param nose Logical; skip bootstrap standard errors and confidence intervals.
 #' @param cluster Optional name of cluster variable for clustered bootstrap.
-#' @param breps Number of bootstrap replications.
+#' @param breps Integer number of bootstrap replications.
 #' @param eqtest Logical; compute equality tests across requested LATE estimands.
 #' @param modelx Optional native covariate-adjusted methods (`ols`, `logit`,
 #'   `probit`). Two entries are required for binary treatments and three for
@@ -55,7 +57,8 @@ fuzzydid <- function(
   sieveorder = NULL,
   tagobs = FALSE,
   backend = c("auto", "native", "stata"),
-  seed = 1
+  seed = 1,
+  treatment = NULL
 ) {
   if (!is.data.frame(data)) {
     stop("`data` must be a data frame.", call. = FALSE)
@@ -88,7 +91,7 @@ fuzzydid <- function(
   )
 
   .validate_common_options(opts, breps_missing = breps_missing)
-  parsed <- .parse_fuzzy_formula(formula, data)
+  parsed <- .parse_fuzzy_formula(formula, data, treatment = treatment)
   prepared <- .prepare_input_data(
     data = data,
     y_name = parsed$y_name,
@@ -204,13 +207,19 @@ fuzzydid <- function(
   }
 
   if (!opts$nose) {
-    if (!is.numeric(opts$breps) || length(opts$breps) != 1L || is.na(opts$breps) || opts$breps < 2) {
-      stop("`breps` must be a numeric scalar >= 2.", call. = FALSE)
+    breps <- opts$breps
+    is_integer_like <- is.numeric(breps) &&
+      length(breps) == 1L &&
+      !is.na(breps) &&
+      is.finite(breps) &&
+      (breps == as.integer(breps))
+    if (!is_integer_like || breps < 2) {
+      stop("`breps` must be an integer scalar >= 2.", call. = FALSE)
     }
   }
 }
 
-.parse_fuzzy_formula <- function(formula, data) {
+.parse_fuzzy_formula <- function(formula, data, treatment = NULL) {
   tr <- stats::terms(formula, data = data)
   rhs_terms <- attr(tr, "term.labels")
   if (length(rhs_terms) < 1L) {
@@ -222,9 +231,30 @@ fuzzydid <- function(
     stop("Formula LHS must contain exactly one outcome variable.", call. = FALSE)
   }
 
+  if (!is.null(treatment)) {
+    if (!is.character(treatment) || length(treatment) != 1L || !nzchar(treatment)) {
+      stop("`treatment` must be a single variable name.", call. = FALSE)
+    }
+    if (!(treatment %in% rhs_terms)) {
+      stop("`treatment` must appear on the formula RHS.", call. = FALSE)
+    }
+    d_name <- treatment
+  } else if (length(rhs_terms) == 1L) {
+    d_name <- rhs_terms[[1L]]
+  } else {
+    d_matches <- which(rhs_terms == "d")
+    if (length(d_matches) == 1L) {
+      d_name <- "d"
+    } else {
+      stop(
+        "Unable to infer treatment from formula RHS; provide `treatment = \"<var>\"`.",
+        call. = FALSE
+      )
+    }
+  }
+
   y_name <- lhs_vars[[1L]]
-  d_name <- rhs_terms[[1L]]
-  covariates <- rhs_terms[-1L]
+  covariates <- rhs_terms[rhs_terms != d_name]
 
   needed <- c(y_name, d_name, covariates)
   missing_vars <- setdiff(needed, names(data))
@@ -404,7 +434,7 @@ fuzzydid <- function(
   for (nm in c(group, group_forward)) {
     bad <- !(df[[nm]] %in% c(-3, -1, 0, 1) | is.na(df[[nm]]))
     if (any(bad)) {
-      stop(sprintf("The group variable `%s` takes values outside {-1,0,1,NA}.", nm), call. = FALSE)
+      stop(sprintf("The group variable `%s` takes values outside {-3,-1,0,1,NA}.", nm), call. = FALSE)
     }
     if (sum(df[[nm]] == 0, na.rm = TRUE) == 0L) {
       stop("The group variables must take value 0 for some observations.", call. = FALSE)
@@ -1615,7 +1645,7 @@ fuzzydid <- function(
 #' @description Print a compact summary table for fuzzydid results.
 #' @param object A fuzzydid object.
 #' @param ... Unused.
-#' @exportS3Method Rfuzzydid::summary
+#' @export
 summary.fuzzydid <- function(object, ...) {
   if (!inherits(object, "fuzzydid")) {
     stop("`object` must be a fuzzydid object.", call. = FALSE)
