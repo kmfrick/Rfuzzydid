@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
 
 This vignette demonstrates how to use **Rfuzzydid** to replicate the Duflo (2001) school construction program analysis using fuzzy difference-in-differences, following the methodology of de Chaisemartin and D'Haultfoeuille (2018).
 
-The data comes from the INPRES school construction program in Indonesia, examining the effect of education on wages. We use the bundled `inpresdata.dta` file shipped in `inst/extdata`.
+The data comes from the INPRES school construction program in Indonesia, examining the effect of education on wages. We use the bundled `inpresdata.dta` file shipped in `inst/extdata`, sourced from [droodman/Duflo2001](https://github.com/droodman/Duflo2001/blob/main/inpresdata.dta).
 
 # Data Preparation
 
