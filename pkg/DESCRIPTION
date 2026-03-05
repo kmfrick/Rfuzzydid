@@ -7,5 +7,8 @@ Date: 2023-11-11
 Author: Kevin Michael Frick <kmfrick98@gmail.com>
 Maintainer: Kevin Michael Frick <kmfrick98@gmail.com>
 License: GPL (>= 2)
-Depends: bootstrap, knitr
+Depends: R (>= 3.6.0)
+Imports: knitr
+Suggests: broom, testthat (>= 3.0.0)
+Config/testthat/edition: 3
 RoxygenNote: 7.1.1

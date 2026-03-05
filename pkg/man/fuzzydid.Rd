@@ -5,34 +5,73 @@
 \title{fuzzydid}
 \usage{
 fuzzydid(
-  df,
-  y_name,
-  g_name,
-  t_name,
-  d_name,
-  X_name = NULL,
-  est = c("did", "tc", "cic"),
-  nboot = 50
+  data,
+  formula,
+  group,
+  time,
+  group_forward = NULL,
+  did = FALSE,
+  tc = FALSE,
+  cic = FALSE,
+  lqte = FALSE,
+  newcateg = NULL,
+  numerator = FALSE,
+  partial = FALSE,
+  nose = FALSE,
+  cluster = NULL,
+  breps = 50,
+  eqtest = FALSE,
+  modelx = NULL,
+  sieves = FALSE,
+  sieveorder = NULL,
+  tagobs = FALSE,
+  backend = c("auto", "native", "stata"),
+  seed = 1
 )
 }
 \arguments{
-\item{df}{Data frame to operate on}
+\item{data}{Data frame.}
 
-\item{y_name}{Outcome variable}
+\item{formula}{Formula of the form \code{y ~ d + covariates}.}
 
-\item{g_name}{Group variable}
+\item{group}{Name of the group variable (backward group for multi-period).}
 
-\item{t_name}{Time period variable}
+\item{time}{Name of the time variable.}
 
-\item{d_name}{Treatment variable, can be any ordered variable}
+\item{group_forward}{Optional name of the forward group variable for multi-period designs.}
 
-\item{X_name}{Covariates to include}
+\item{did, tc, cic, lqte}{Logical flags indicating estimators to compute.}
 
-\item{est}{Estimators to compute. Should contain at least one of "did", "tc", "cic"}
+\item{newcateg}{Optional numeric vector of upper bounds used to recategorize treatment values for TC/CIC.}
 
-\item{nboot}{Number of bootstrap samples for standard errors}
+\item{numerator}{Logical; return estimator numerators for DID/TC/CIC.}
+
+\item{partial}{Logical; request TC partial-identification bounds.}
+
+\item{nose}{Logical; skip bootstrap standard errors and confidence intervals.}
+
+\item{cluster}{Optional name of cluster variable for clustered bootstrap.}
+
+\item{breps}{Number of bootstrap replications.}
+
+\item{eqtest}{Logical; compute equality tests across requested LATE estimands.}
+
+\item{modelx}{Reserved for native covariate-adjusted methods (\code{ols}, \code{logit}, \code{probit}); currently unsupported.}
+
+\item{sieves}{Reserved for native sieve estimation; currently unsupported.}
+
+\item{sieveorder}{Optional length-2 numeric vector for sieve orders.}
+
+\item{tagobs}{Logical; return logical mask of observations used.}
+
+\item{backend}{One of \code{"auto"} or \code{"native"}. \code{"stata"} is no longer supported and errors.}
+
+\item{seed}{Bootstrap/random seed.}
+}
+\value{
+An object of class \code{fuzzydid}.
 }
 \description{
-Computes the corrected LATE estimators as in de Chaisemartin and D'Haultfoeuille (2018)
-<doi:10.1093/restud/rdx049>
+Formula-first interface for fuzzy difference-in-differences estimators.
+Estimation is fully native in R.
 }
