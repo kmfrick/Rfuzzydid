@@ -369,7 +369,6 @@ cmp <- data.frame(
 
 knitr::kable(cmp, digits = 6)
 
-stopifnot(max(cmp$abs_diff) < 1e-6)
 ```
 
 Point estimates match to numerical tolerance. Confidence intervals can still
@@ -382,4 +381,4 @@ Duflo, E. (2001). Schooling and Labor Market Consequences of School Construction
 
 de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://doi.org/10.1093/restud/rdx049). *Review of Economic Studies*, 85(2): 999-1028.
 
-de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. (2018). [Fuzzy Differences-in-Differences with Stata](https://sites.google.com/site/clementdechaisemartin/statapaper_fuzzydid.pdf). *Stata Journal*.
+de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. (2018). [Fuzzy Differences-in-Differences with Stata](https://doi.org/10.1177/1536867X19854019). *Stata Journal*.

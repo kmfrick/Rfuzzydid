@@ -3,6 +3,9 @@
 ^\.github$
 ^\.\.?Rcheck$
 ^Rfuzzydid\.Rcheck$
+^Rfuzzydid\.Rcheck\.linux$
 ^Rfuzzydid_.*\.tar\.gz$
+^\.vagrant$
+^Vagrantfile$
 ^vignettes/.*\.html$
 ^vignettes/stata_parity_capture.*\.log$

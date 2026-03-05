@@ -41,11 +41,11 @@ fuzzydid(
 
 - `data`: Data frame containing all variables.
 - `formula`: A formula of the form `y ~ d` or `y ~ d + x1 + x2`, where `y` is the outcome variable, `d` is the treatment variable, and `x1`, `x2`, etc. are covariates.
-- `group`: Name of the group variable (backward group for multi-period designs). See Section 4.2 of [de Chaisemartin et al. (2018b)](https://sites.google.com/site/clementdechaisemartin/statapaper_fuzzydid.pdf) for details on constructing this variable.
+- `group`: Name of the group variable (backward group for multi-period designs). See Section 4.2 of [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019) for details on constructing this variable.
 - `time`: Name of the time period variable.
 - `group_forward`: Optional name of the forward group variable for multi-period designs.
 
-A detailed introduction to the methodology is given in [de Chaisemartin et al. (2018b)](https://sites.google.com/site/clementdechaisemartin/statapaper_fuzzydid.pdf).
+A detailed introduction to the methodology is given in [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019).
 
 ## Options
 
@@ -60,7 +60,7 @@ At least one of `did`, `tc`, `cic`, or `lqte` must be specified. If several are 
 
 **Treatment categorization:**
 
-- `newcateg`: Numeric vector of upper bounds to group treatment values together for Wald-TC and Wald-CIC. Useful when treatment takes many values. See Section 3.3 of [de Chaisemartin et al. (2018b)](https://sites.google.com/site/clementdechaisemartin/statapaper_fuzzydid.pdf).
+- `newcateg`: Numeric vector of upper bounds to group treatment values together for Wald-TC and Wald-CIC. Useful when treatment takes many values. See Section 3.3 of [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019).
 
 **Numerators and bounds:**
 
@@ -167,9 +167,9 @@ fuzzydid y g t d, did tc cic breps(50)
 
 ## References
 
-- de Chaisemartin, C. and D'Haultfoeuille, X. 2018a. [Fuzzy Differences-in-Differences](https://sites.google.com/site/clementdechaisemartin/fuzzy_did.pdf). *Review of Economic Studies*, 85(2): 999-1028.
+- de Chaisemartin, C. and D'Haultfoeuille, X. 2018a. [Fuzzy Differences-in-Differences](https://doi.org/10.1093/restud/rdx049). *Review of Economic Studies*, 85(2): 999-1028.
 
-- de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. 2018b. [Fuzzy Differences-in-Differences with Stata](https://sites.google.com/site/clementdechaisemartin/statapaper_fuzzydid.pdf). *Stata Journal*.
+- de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. 2018b. [Fuzzy Differences-in-Differences with Stata](https://doi.org/10.1177/1536867X19854019). *Stata Journal*.
 
 
 ## License
