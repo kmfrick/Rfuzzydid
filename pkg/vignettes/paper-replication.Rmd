@@ -1,0 +1,189 @@
+---
+title: "Replicating Duflo (2001) with Rfuzzydid"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Replicating Duflo (2001) with Rfuzzydid}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = TRUE
+)
+```
+
+# Introduction
+
+This vignette demonstrates how to use **Rfuzzydid** to replicate the Duflo (2001) school construction program analysis using fuzzy difference-in-differences, following the methodology of de Chaisemartin and D'Haultfoeuille (2018).
+
+The data comes from the INPRES school construction program in Indonesia, examining the effect of education on wages. We use the bundled `inpresdata.dta` file shipped in `inst/extdata`.
+
+# Data Preparation
+
+## Loading the Data
+
+```{r load-data}
+library(Rfuzzydid)
+library(foreign)
+
+# Load bundled INPRES data from the installed package
+data_path <- system.file("extdata", "inpresdata.dta", package = "Rfuzzydid")
+if (identical(data_path, "")) {
+  stop("Bundled dataset 'inpresdata.dta' was not found in extdata.")
+}
+raw <- read.dta(data_path)
+```
+
+## Constructing the Analysis Sample
+
+Following the original analysis, we restrict to cohorts 1957-1962 (control) and 1968-1972 (treated):
+
+```{r sample-construction}
+# Define cohort groups
+cohort0 <- raw$p504thn >= 57 & raw$p504thn <= 62
+cohort1 <- raw$p504thn >= 68 & raw$p504thn <= 72
+
+# Keep observations with non-missing outcome and treatment
+keep <- !is.na(raw$lhwage) & !is.na(raw$yeduc) & (cohort0 | cohort1)
+
+dat <- raw[keep, c("birthpl", "lhwage", "yeduc", "p504thn")]
+
+# Time indicator: t = 1 for later cohort
+dat$t <- as.integer(dat$p504thn >= 68 & dat$p504thn <= 72)
+```
+
+## Constructing Group Variables
+
+The fuzzy DID methodology constructs super-groups based on whether education evolved differently across districts. We use chi-square tests to classify districts:
+
+```{r group-construction}
+pval_threshold <- 0.5
+districts <- sort(unique(dat$birthpl))
+gstar_map <- setNames(integer(length(districts)), as.character(districts))
+
+for (g in districts) {
+  i <- dat$birthpl == g
+  sub <- dat[i, ]
+  tab <- table(sub$yeduc, sub$t)
+  pval <- suppressWarnings(chisq.test(tab)$p.value)
+  evol <- mean(sub$yeduc[sub$t == 1]) - mean(sub$yeduc[sub$t == 0])
+  if (!is.na(pval) && pval < pval_threshold) {
+    gstar_map[[as.character(g)]] <- if (evol > 0) 1L else if (evol < 0) -1L else 0L
+  } else {
+    gstar_map[[as.character(g)]] <- 0L
+  }
+}
+
+dat$gstar <- unname(gstar_map[as.character(dat$birthpl)])
+```
+
+This creates three super-groups:
+
+- `gstar = 1`: Districts where education increased (treatment intensity rose)
+- `gstar = -1`: Districts where education decreased
+- `gstar = 0`: Districts with no significant change
+
+# Two-Arm Estimation
+
+The analysis estimates effects separately for two treatment arms, then aggregates:
+
+## Arm 1: Districts with Increasing Education (g* = 1 vs g* = 0)
+
+```{r arm-inc}
+arm_inc_data <- dat[dat$gstar >= 0, ]
+arm_inc_data$G <- as.integer(arm_inc_data$gstar == 1)
+
+fit_inc <- fuzzydid(
+  data = arm_inc_data,
+  formula = lhwage ~ yeduc,
+  group = "G",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  newcateg = c(5, 8, 11, 14, 1000),
+  nose = TRUE,
+  backend = "native"
+)
+
+knitr::kable(fit_inc$late)
+```
+
+## Arm 2: Districts with Decreasing Education (g* = -1 vs g* = 0)
+
+```{r arm-dec}
+arm_dec_data <- dat[dat$gstar <= 0, ]
+arm_dec_data$G <- as.integer(arm_dec_data$gstar == -1)
+
+fit_dec <- fuzzydid(
+  data = arm_dec_data,
+  formula = lhwage ~ yeduc,
+  group = "G",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  newcateg = c(5, 8, 11, 14, 1000),
+  nose = TRUE,
+  backend = "native"
+)
+
+knitr::kable(fit_dec$late)
+```
+
+# Aggregating Results
+
+Following the paper, results are aggregated using treatment-intensity weights:
+
+```{r aggregate}
+# Treatment intensity weights
+dD_inc <- mean(arm_inc_data$yeduc[arm_inc_data$G == 1 & arm_inc_data$t == 1]) -
+          mean(arm_inc_data$yeduc[arm_inc_data$G == 1 & arm_inc_data$t == 0]) -
+          mean(arm_inc_data$yeduc[arm_inc_data$G == 0 & arm_inc_data$t == 1]) +
+          mean(arm_inc_data$yeduc[arm_inc_data$G == 0 & arm_inc_data$t == 0])
+
+dD_dec <- mean(arm_dec_data$yeduc[arm_dec_data$G == 1 & arm_dec_data$t == 1]) -
+          mean(arm_dec_data$yeduc[arm_dec_data$G == 1 & arm_dec_data$t == 0]) -
+          mean(arm_dec_data$yeduc[arm_dec_data$G == 0 & arm_dec_data$t == 1]) +
+          mean(arm_dec_data$yeduc[arm_dec_data$G == 0 & arm_dec_data$t == 0])
+
+p_inc <- mean(dat$gstar == 1)
+p_dec <- mean(dat$gstar == -1)
+
+w_inc <- p_inc * dD_inc
+w_dec <- p_dec * (-dD_dec)
+
+# Extract point estimates
+did_inc <- fit_inc$late$estimate[fit_inc$late$estimator == "W_DID"]
+tc_inc  <- fit_inc$late$estimate[fit_inc$late$estimator == "W_TC"]
+cic_inc <- fit_inc$late$estimate[fit_inc$late$estimator == "W_CIC"]
+
+did_dec <- fit_dec$late$estimate[fit_dec$late$estimator == "W_DID"]
+tc_dec  <- fit_dec$late$estimate[fit_dec$late$estimator == "W_TC"]
+cic_dec <- fit_dec$late$estimate[fit_dec$late$estimator == "W_CIC"]
+
+# Weighted aggregation
+did_agg <- (did_inc * w_inc + did_dec * w_dec) / (w_inc + w_dec)
+tc_agg  <- (tc_inc  * w_inc + tc_dec  * w_dec) / (w_inc + w_dec)
+cic_agg <- (cic_inc * w_inc + cic_dec * w_dec) / (w_inc + w_dec)
+
+cat("Aggregate Estimates:\n")
+cat(sprintf("DID = %.6f\n", did_agg))
+cat(sprintf("TC  = %.6f\n", tc_agg))
+cat(sprintf("CIC = %.6f\n", cic_agg))
+```
+
+# Comparison with Stata
+
+The equivalent Stata code is available in the [Duflo2001 repository](https://github.com/droodman/Duflo2001). **Note:** Point estimates from R and Stata will be identical, but bootstrap confidence intervals will differ due to RNG differences between platforms. Results remain comparable across implementations.
+
+# References
+
+Duflo, E. (2001). Schooling and Labor Market Consequences of School Construction in Indonesia. *American Economic Review*, 91(4): 795-813.
+
+de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://academic.oup.com/restud/article/85/2/999/4096388). *Review of Economic Studies*, 85(2): 999-1028.
+
+de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. (2018). [Fuzzy Differences-in-Differences with Stata](https://sites.google.com/site/clementdechaisemartin/statapaper_fuzzydid.pdf). *Stata Journal*.

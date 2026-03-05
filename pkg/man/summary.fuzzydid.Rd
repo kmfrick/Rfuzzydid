@@ -7,10 +7,10 @@
 \method{summary}{fuzzydid}(object, ...)
 }
 \arguments{
-\item{object}{A fuzzydid object}
+\item{object}{A fuzzydid object.}
 
-\item{...}{Extra arguments are ignored}
+\item{...}{Unused.}
 }
 \description{
-Displays the estimations in a table
+Print a compact summary table for fuzzydid results.
 }

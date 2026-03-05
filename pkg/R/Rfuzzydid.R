@@ -21,8 +21,11 @@
 #'   `probit`). Two entries are required for binary treatments and three for
 #'   ordered multi-valued treatments.
 #' @param sieves Logical; use sieve expansion for continuous covariates.
-#' @param sieveorder Optional length-2 numeric vector for sieve orders (outcome,
-#'   treatment).
+#' @param sieveorder Optional sieve order control for `sieves = TRUE`.
+#'   `NULL` (default) selects order by deterministic 5-fold CV.
+#'   A scalar value applies to both outcome and treatment sieve bases.
+#'   A length-2 vector is accepted for backward compatibility and interpreted
+#'   as `(outcome_order, treatment_order)`.
 #' @param tagobs Logical; return logical mask of observations used.
 #' @param backend One of `"auto"` or `"native"`. `"stata"` is no longer
 #'   supported and errors.
@@ -169,11 +172,20 @@ fuzzydid <- function(
   }
 
   if (!is.null(opts$sieveorder)) {
-    if (!is.numeric(opts$sieveorder) || length(opts$sieveorder) != 2L) {
-      stop("`sieveorder` must be a numeric vector of length 2.", call. = FALSE)
+    if (!is.numeric(opts$sieveorder) || !(length(opts$sieveorder) %in% c(1L, 2L))) {
+      stop("`sieveorder` must be numeric with length 1 or 2.", call. = FALSE)
     }
-    if (any(opts$sieveorder < 1)) {
-      stop("`sieveorder` values must be >= 1.", call. = FALSE)
+    if (any(!is.finite(opts$sieveorder))) {
+      stop("`sieveorder` values must be finite.", call. = FALSE)
+    }
+    if (any(opts$sieveorder < 2)) {
+      stop("`sieveorder` values must be >= 2.", call. = FALSE)
+    }
+    if (length(opts$sieveorder) == 2L) {
+      warning(
+        "Using length-2 `sieveorder` is deprecated; prefer a scalar order or `NULL` for CV.",
+        call. = FALSE
+      )
     }
   }
 
@@ -581,6 +593,135 @@ fuzzydid <- function(
   out
 }
 
+.sieve_basis_cap <- function(n_obs) {
+  as.integer(min(4800L, floor(n_obs / 5)))
+}
+
+.max_sieve_order <- function(df, cov_types) {
+  n_obs <- nrow(df)
+  n_cont <- length(cov_types$continuous)
+  if (n_cont == 0L) {
+    return(NA_integer_)
+  }
+
+  cap <- .sieve_basis_cap(n_obs)
+  n_qual_terms <- ncol(.build_feature_frame(df, character(0), cov_types$qualitative, order = 1L))
+  room <- cap - n_qual_terms
+  if (room < n_cont) {
+    return(NA_integer_)
+  }
+  as.integer(floor(room / n_cont))
+}
+
+.ensure_sieve_basis_within_cap <- function(df, cov_types, y_order, d_order) {
+  cap <- .sieve_basis_cap(nrow(df))
+  if (cap < 1L) {
+    stop("Sieve estimation requires at least 5 observations in each estimation sub-design.", call. = FALSE)
+  }
+
+  y_terms <- ncol(.build_feature_frame(df, cov_types$continuous, cov_types$qualitative, order = y_order))
+  d_terms <- ncol(.build_feature_frame(df, cov_types$continuous, cov_types$qualitative, order = d_order))
+  if (y_terms > cap || d_terms > cap) {
+    stop(
+      sprintf(
+        "Sieve basis has too many terms (%s for outcome, %s for treatment); cap is %s = min(4800, floor(n/5)).",
+        y_terms,
+        d_terms,
+        cap
+      ),
+      call. = FALSE
+    )
+  }
+}
+
+.cv_score_sieve_order <- function(df, y, d, cov_types, order, k_folds = 5L) {
+  x <- .build_feature_frame(df, cov_types$continuous, cov_types$qualitative, order = order)
+  n <- nrow(df)
+  k <- min(as.integer(k_folds), n)
+  if (k < 2L) {
+    return(Inf)
+  }
+
+  fold_id <- ((seq_len(n) - 1L) %% k) + 1L
+  fold_losses <- numeric(k)
+
+  for (fold in seq_len(k)) {
+    test_idx <- fold_id == fold
+    train_idx <- !test_idx
+
+    y_pred <- .fit_predict_vector(
+      train_y = y[train_idx],
+      train_x = x[train_idx, , drop = FALSE],
+      pred_x = x[test_idx, , drop = FALSE],
+      method = "ols"
+    )
+    d_pred <- .fit_predict_vector(
+      train_y = d[train_idx],
+      train_x = x[train_idx, , drop = FALSE],
+      pred_x = x[test_idx, , drop = FALSE],
+      method = "ols"
+    )
+
+    y_true <- y[test_idx]
+    d_true <- d[test_idx]
+    y_ok <- is.finite(y_true) & is.finite(y_pred)
+    d_ok <- is.finite(d_true) & is.finite(d_pred)
+    if (!any(y_ok) || !any(d_ok)) {
+      return(Inf)
+    }
+
+    mse_y <- mean((y_true[y_ok] - y_pred[y_ok])^2)
+    mse_d <- mean((d_true[d_ok] - d_pred[d_ok])^2)
+    if (!is.finite(mse_y) || !is.finite(mse_d)) {
+      return(Inf)
+    }
+    fold_losses[[fold]] <- mse_y + mse_d
+  }
+
+  mean(fold_losses)
+}
+
+.resolve_sieve_orders <- function(df, y, d, cov_types, opts) {
+  if (!opts$sieves) {
+    return(list(y_order = 1L, d_order = 1L, selected_by_cv = FALSE))
+  }
+
+  if (!is.null(opts$sieveorder)) {
+    so <- as.integer(opts$sieveorder)
+    if (length(so) == 1L) {
+      y_order <- so[[1L]]
+      d_order <- so[[1L]]
+    } else {
+      y_order <- so[[1L]]
+      d_order <- so[[2L]]
+    }
+    .ensure_sieve_basis_within_cap(df, cov_types, y_order = y_order, d_order = d_order)
+    return(list(y_order = y_order, d_order = d_order, selected_by_cv = FALSE))
+  }
+
+  max_order <- .max_sieve_order(df, cov_types)
+  if (!is.finite(max_order) || max_order < 2L) {
+    stop(
+      "Unable to choose sieve order by CV: basis cap min(4800, floor(n/5)) leaves no feasible order >= 2.",
+      call. = FALSE
+    )
+  }
+
+  candidates <- seq.int(2L, max_order)
+  scores <- vapply(
+    candidates,
+    function(ord) .cv_score_sieve_order(df = df, y = y, d = d, cov_types = cov_types, order = ord),
+    numeric(1)
+  )
+  if (all(!is.finite(scores))) {
+    stop("Unable to choose sieve order by CV due to non-finite fold losses.", call. = FALSE)
+  }
+
+  best <- candidates[[which.min(scores)]]
+  .ensure_sieve_basis_within_cap(df, cov_types, y_order = best, d_order = best)
+  list(y_order = best, d_order = best, selected_by_cv = TRUE)
+}
+
 .resolve_model_methods <- function(modelx, y_vals, d_vals) {
   if (is.null(modelx)) {
     return(list(y = "ols", d1 = "ols", d2 = "ols"))
@@ -727,30 +868,82 @@ fuzzydid <- function(
       if (opts$partial) {
         min_y <- min(y, na.rm = TRUE)
         max_y <- max(y, na.rm = TRUE)
-        low_build <- 0
-        high_build <- 0
+        levels_all <- sort(unique(d_tc))
+        build_inf <- 0
+        build_sup <- 0
 
-        for (lv in levels_10) {
-          p_d10 <- mean(d_tc[g == 1 & t == 0] == lv)
-          y01_d <- y[g == 0 & t == 1 & d_tc == lv]
-          y00_d <- y[g == 0 & t == 0 & d_tc == lv]
+        .partial_pctile <- function(vals, pct) {
+          n <- length(vals)
+          if (n == 0L || !is.finite(pct)) return(NA_real_)
+          if (pct <= (100 / n)) return(min(vals))
+          if (pct >= 100) return(max(vals))
+          as.numeric(stats::quantile(vals, probs = pct / 100, type = 2, names = FALSE))
+        }
 
-          if (length(y01_d) == 0L || length(y00_d) == 0L) {
-            delta_low <- min_y - max_y
-            delta_high <- max_y - min_y
-          } else {
-            delta <- mean(y01_d) - mean(y00_d)
-            delta_low <- delta
-            delta_high <- delta
+        if (length(levels_all) == 2L) {
+          lv1 <- levels_all[[1L]]
+          lv2 <- levels_all[[2L]]
+
+          p_low_01 <- mean(d_tc[g == 0 & t == 1] == lv1)
+          p_low_00 <- mean(d_tc[g == 0 & t == 0] == lv1)
+          p_high_01 <- 1 - p_low_01
+          p_high_00 <- 1 - p_low_00
+
+          for (lv in levels_10) {
+            p_d10 <- mean(d_tc[g == 1 & t == 0] == lv)
+            y01_d <- y[g == 0 & t == 1 & d_tc == lv]
+            y00_d <- y[g == 0 & t == 0 & d_tc == lv]
+            mean_y00_d <- .safe_mean(y00_d)
+
+            delta_inf <- NA_real_
+            delta_sup <- NA_real_
+
+            if (lv == lv1) {
+              ratio <- p_low_01 / p_low_00
+              y01_mean <- .safe_mean(y01_d)
+              delta_inf <- (1 - ratio) * min_y + ratio * y01_mean
+              delta_sup <- (1 - ratio) * max_y + ratio * y01_mean
+            } else if (lv == lv2) {
+              ratio <- p_high_01 / p_high_00
+              qsup <- .partial_pctile(y01_d, 100 * (1 - 1 / ratio))
+              qinf <- .partial_pctile(y01_d, 100 / ratio)
+              if (is.finite(qinf)) {
+                delta_inf <- .safe_mean(y01_d[y01_d <= qinf])
+              }
+              if (is.finite(qsup)) {
+                delta_sup <- .safe_mean(y01_d[y01_d >= qsup])
+              }
+            }
+
+            delta_inf <- delta_inf - mean_y00_d
+            delta_sup <- delta_sup - mean_y00_d
+
+            build_inf <- build_inf + p_d10 * delta_sup
+            build_sup <- build_sup + p_d10 * delta_inf
           }
+        } else {
+          for (lv in levels_10) {
+            p_d10 <- mean(d_tc[g == 1 & t == 0] == lv)
+            y01_d <- y[g == 0 & t == 1 & d_tc == lv]
+            y00_d <- y[g == 0 & t == 0 & d_tc == lv]
 
-          low_build <- low_build + p_d10 * delta_low
-          high_build <- high_build + p_d10 * delta_high
+            if (length(y01_d) == 0L || length(y00_d) == 0L) {
+              delta_low <- min_y - max_y
+              delta_high <- max_y - min_y
+            } else {
+              delta <- mean(y01_d) - mean(y00_d)
+              delta_low <- delta
+              delta_high <- delta
+            }
+
+            build_inf <- build_inf + p_d10 * delta_high
+            build_sup <- build_sup + p_d10 * delta_low
+          }
         }
 
         num_base <- m_y11 - m_y10
-        tc_inf <- (num_base - high_build) / tc_den
-        tc_sup <- (num_base - low_build) / tc_den
+        tc_inf <- (num_base - build_inf) / tc_den
+        tc_sup <- (num_base - build_sup) / tc_den
         bounds <- sort(c(tc_inf, tc_sup))
         out$tc_inf <- bounds[[1L]]
         out$tc_sup <- bounds[[2L]]
@@ -811,14 +1004,26 @@ fuzzydid <- function(
 
   methods <- .resolve_model_methods(opts$modelx, y_vals = y, d_vals = d_true)
 
-  if (opts$sieves) {
-    sieveorder <- if (is.null(opts$sieveorder)) c(2, 2) else as.integer(opts$sieveorder)
-    x_y <- .build_feature_frame(sub_df, cov_types$continuous, cov_types$qualitative, order = sieveorder[[1L]])
-    x_d <- .build_feature_frame(sub_df, cov_types$continuous, cov_types$qualitative, order = sieveorder[[2L]])
-  } else {
-    x_y <- .build_feature_frame(sub_df, cov_types$continuous, cov_types$qualitative, order = 1L)
-    x_d <- x_y
-  }
+  resolved_sieve <- .resolve_sieve_orders(
+    df = sub_df,
+    y = y,
+    d = d_true,
+    cov_types = cov_types,
+    opts = opts
+  )
+
+  x_y <- .build_feature_frame(
+    sub_df,
+    cov_types$continuous,
+    cov_types$qualitative,
+    order = resolved_sieve$y_order
+  )
+  x_d <- .build_feature_frame(
+    sub_df,
+    cov_types$continuous,
+    cov_types$qualitative,
+    order = resolved_sieve$d_order
+  )
 
   idx11 <- g == 1 & t == 1
   idx10 <- g == 1 & t == 0
@@ -840,7 +1045,12 @@ fuzzydid <- function(
     tc_sup = NA_real_,
     cic_num = NA_real_,
     cic_den = NA_real_,
-    special_case = FALSE
+    special_case = FALSE,
+    sieveorder_selected = c(
+      outcome = resolved_sieve$y_order,
+      treatment = resolved_sieve$d_order
+    ),
+    sieveorder_selected_by_cv = isTRUE(resolved_sieve$selected_by_cv)
   )
 
   if (opts$did) {
@@ -1057,6 +1267,7 @@ fuzzydid <- function(
 
   pair_results <- list()
   lqte <- numeric(0)
+  sieve_selection <- NULL
 
   for (pair_df in pair_frames) {
     subdesigns <- .extract_pair_subdesigns(pair_df, prepared$time)
@@ -1095,6 +1306,9 @@ fuzzydid <- function(
       est$sign <- sub$sign
       est$counts <- sub$counts
       pair_results[[length(pair_results) + 1L]] <- est
+      if (!is.null(est$sieveorder_selected)) {
+        sieve_selection <- est$sieveorder_selected
+      }
 
       if (opts$lqte && length(lqte) == 0L) {
         lqte <- .estimate_lqte_no_cov(
@@ -1119,7 +1333,12 @@ fuzzydid <- function(
     stop("lqte could not be estimated from the supplied design.", call. = FALSE)
   }
 
-  list(late = late, lqte = lqte, pair_results = pair_results)
+  list(
+    late = late,
+    lqte = lqte,
+    pair_results = pair_results,
+    sieveorder_selected = sieve_selection
+  )
 }
 
 .bootstrap_native <- function(df, prepared, opts, point) {
@@ -1381,6 +1600,7 @@ fuzzydid <- function(
     n10 = counts$n10,
     n01 = counts$n01,
     n00 = counts$n00,
+    sieveorder_selected = point$sieveorder_selected,
     n_reps = n_reps,
     n_misreps = n_misreps,
     share_failures = share_failures
@@ -1506,22 +1726,4 @@ glance.fuzzydid <- function(x, ...) {
     Share.failures = x$share_failures,
     stringsAsFactors = FALSE
   )
-}
-
-#' @title tidy
-#' @description Generic tidy method.
-#' @param x Object to tidy.
-#' @param ... Additional arguments.
-#' @export
-tidy <- function(x, ...) {
-  UseMethod("tidy")
-}
-
-#' @title glance
-#' @description Generic glance method.
-#' @param x Object to summarize.
-#' @param ... Additional arguments.
-#' @export
-glance <- function(x, ...) {
-  UseMethod("glance")
 }

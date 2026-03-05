@@ -7,10 +7,10 @@
 \method{glance}{fuzzydid}(x, ...)
 }
 \arguments{
-\item{x}{A fuzzydid object}
+\item{x}{A fuzzydid object.}
 
-\item{...}{Extra arguments are ignored}
+\item{...}{Unused.}
 }
 \description{
-glance for modelsummary
+One-row summary for `fuzzydid` objects.
 }

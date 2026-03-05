@@ -243,12 +243,59 @@ test_that("covariates with modelx and sieves are supported for DID/TC", {
     did = TRUE,
     tc = TRUE,
     sieves = TRUE,
-    sieveorder = c(2, 2),
     nose = TRUE,
     backend = "native"
   )
 
   expect_true(all(c("W_DID", "W_TC") %in% fit_sieve$late$estimator))
+})
+
+test_that("sieveorder defaults to deterministic CV selection and supports legacy length-2", {
+  df <- make_covariate_fixture()
+
+  fit_cv_1 <- fuzzydid(
+    data = df,
+    formula = y ~ d + x1,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    sieves = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  fit_cv_2 <- fuzzydid(
+    data = df,
+    formula = y ~ d + x1,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    sieves = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_true(!is.null(fit_cv_1$sieveorder_selected))
+  expect_equal(as.integer(fit_cv_1$sieveorder_selected), as.integer(fit_cv_2$sieveorder_selected))
+  expect_true(all(as.integer(fit_cv_1$sieveorder_selected) >= 2L))
+
+  expect_warning(
+    fuzzydid(
+      data = df,
+      formula = y ~ d + x1,
+      group = "g",
+      time = "t",
+      did = TRUE,
+      tc = TRUE,
+      sieves = TRUE,
+      sieveorder = c(2, 2),
+      nose = TRUE,
+      backend = "native"
+    ),
+    "deprecated"
+  )
 })
 
 test_that("strict restrictions mirror Stata-style constraints", {
@@ -265,6 +312,36 @@ test_that("strict restrictions mirror Stata-style constraints", {
       backend = "native"
     ),
     "without covariates"
+  )
+
+  expect_error(
+    fuzzydid(
+      data = df,
+      formula = y ~ d + x1,
+      group = "g",
+      time = "t",
+      did = TRUE,
+      tc = TRUE,
+      sieves = TRUE,
+      sieveorder = 1,
+      backend = "native"
+    ),
+    ">= 2"
+  )
+
+  expect_error(
+    fuzzydid(
+      data = df,
+      formula = y ~ d + x1,
+      group = "g",
+      time = "t",
+      did = TRUE,
+      tc = TRUE,
+      sieves = TRUE,
+      sieveorder = 200,
+      backend = "native"
+    ),
+    "min\\(4800, floor\\(n/5\\)\\)"
   )
 
   expect_error(

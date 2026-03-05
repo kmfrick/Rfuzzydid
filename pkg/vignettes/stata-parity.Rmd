@@ -1,0 +1,648 @@
+---
+title: "Stata Parity: Replicating Stata fuzzydid in R"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Stata Parity: Replicating Stata fuzzydid in R}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r parity-helpers, include = FALSE}
+find_parity_dir <- function() {
+  candidates <- c("tests/testthat", "pkg/tests/testthat", "../tests/testthat")
+  for (path in candidates) {
+    if (dir.exists(path)) return(path)
+  }
+  stop("Could not locate parity golden directory.", call. = FALSE)
+}
+
+parity_golden_dir <- find_parity_dir()
+
+read_parity_golden <- function(filename) {
+  read.csv(file.path(parity_golden_dir, filename), check.names = FALSE)
+}
+
+# Prefer local package sources when rendering inside the repository so
+# parity checks target the code under development.
+find_local_pkg_dir <- function() {
+  roots <- c(".", "..", "../..")
+
+  for (root in roots) {
+    pkg_desc <- file.path(root, "pkg", "DESCRIPTION")
+    root_desc <- file.path(root, "DESCRIPTION")
+
+    if (file.exists(pkg_desc)) {
+      return(file.path(root, "pkg"))
+    }
+
+    if (file.exists(root_desc)) {
+      desc <- tryCatch(read.dcf(root_desc), error = function(e) NULL)
+      if (!is.null(desc) && "Package" %in% colnames(desc) && identical(desc[1, "Package"], "Rfuzzydid")) {
+        return(root)
+      }
+    }
+  }
+
+  NULL
+}
+
+local_pkg_dir <- find_local_pkg_dir()
+
+if (!is.null(local_pkg_dir) && requireNamespace("pkgload", quietly = TRUE)) {
+  pkgload::load_all(local_pkg_dir, helpers = FALSE, export_all = FALSE, quiet = TRUE)
+} else {
+  library(Rfuzzydid)
+}
+```
+
+# Introduction
+
+This vignette demonstrates how **Rfuzzydid** replicates the behavior of the Stata `fuzzydid` command. We use simulated data to show that the R implementation produces identical point estimates and properly handles the same design restrictions as the original Stata package.
+
+The methodology implemented in both packages comes from de Chaisemartin and D'Haultfoeuille (2018), who propose estimators for local average and quantile treatment effects in fuzzy difference-in-differences designs.
+
+
+# Simulated Data Example
+
+We generate a simple two-period, two-group fuzzy DID design. The data generating process creates:
+
+- A control group (G = 0) observed in periods T = 0 and T = 1
+- A treatment group (G = 1) observed in periods T = 0 and T = 1
+- Treatment uptake D that increases more in the treatment group between periods
+- Outcome Y that responds to treatment
+
+```{r sim-data}
+set.seed(50321)
+
+n_cell <- 120  # observations per cell
+
+# Helper function to create each (G, T) cell
+make_cell <- function(g, t, prob_d) {
+  d <- rbinom(n_cell, size = 1, prob = prob_d)
+  # Outcome: base + group effect + time effect + treatment effect + noise
+  y <- 1 + 0.5 * g + 0.4 * t + 2.0 * d + sin(seq_len(n_cell) / 7)
+  data.frame(y = y, g = g, t = t, d = d)
+}
+
+# Build the four cells
+df <- rbind(
+  make_cell(g = 0, t = 0, prob_d = 0.20),  # Control group, baseline
+  make_cell(g = 0, t = 1, prob_d = 0.40),  # Control group, follow-up  
+  make_cell(g = 1, t = 0, prob_d = 0.30),  # Treatment group, baseline
+  make_cell(g = 1, t = 1, prob_d = 0.80)   # Treatment group, follow-up
+)
+
+# Verify cell sizes and treatment rates
+aggregate(cbind(n = d) ~ g + t, data = df, FUN = function(x) c(n = length(x), mean = mean(x)))
+
+# Save fixture used by most examples for direct Stata comparison
+if (requireNamespace("haven", quietly = TRUE)) {
+  haven::write_dta(df, "stata-parity-sim-fixture.dta")
+}
+```
+
+The treatment rate increases from 30% to 80% in the treatment group, while only increasing from 20% to 40% in the control group. This differential increase creates the "fuzzy" setting.
+
+# Basic Estimation
+
+## Wald-DID, Wald-TC, and Wald-CIC
+
+We request all three main estimators:
+
+```{r basic-est}
+fit <- fuzzydid(
+  data = df,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  breps = 50
+)
+
+summary(fit)
+
+stata_basic <- c(
+  W_DID = 2.00000000000000,
+  W_TC = 1.97320415000280,
+  W_CIC = 2.22209836585117
+)
+r_basic <- setNames(fit$late$estimate, fit$late$estimator)[names(stata_basic)]
+basic_cmp <- data.frame(
+  estimator = names(stata_basic),
+  R = unname(r_basic),
+  Stata = unname(stata_basic),
+  abs_diff = abs(unname(r_basic) - unname(stata_basic))
+)
+knitr::kable(basic_cmp, digits = 8)
+```
+
+The output shows point estimates, bootstrap standard errors, and 95% percentile bootstrap confidence intervals for each estimator.
+
+Equivalent Stata code:
+
+```stata
+fuzzydid y g t d, did tc cic breps(50)
+matrix list e(b_LATE)
+matrix list e(se_LATE)
+matrix list e(ci_LATE)
+```
+
+## Extracting Results Programmatically
+
+The `tidy()` method returns a data frame suitable for downstream analysis:
+
+```{r tidy-output}
+library(modelsummary)
+
+modelsummary::modelsummary(fit)
+```
+
+Equivalent Stata code:
+
+```stata
+* Tidy-like access in Stata comes from stored matrices/scalars in e()
+matrix list e(b_LATE)
+matrix list e(se_LATE)
+matrix list e(ci_LATE)
+display e(N_reps)
+display e(N_misreps)
+display e(share_failures)
+```
+
+## Core Stata Parity Check
+
+The core LATE point estimates match the frozen Stata parity targets used in
+the test suite:
+
+```{r parity-check}
+n_cell <- 120L
+
+make_parity_cell <- function(g, t, ones) {
+  data.frame(
+    g = rep.int(g, n_cell),
+    t = rep.int(t, n_cell),
+    d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+  )
+}
+
+out <- rbind(
+  make_parity_cell(0L, 0L, 24L),
+  make_parity_cell(0L, 1L, 48L),
+  make_parity_cell(1L, 0L, 36L),
+  make_parity_cell(1L, 1L, 96L)
+)
+out$id <- seq_len(nrow(out))
+out$y <- 1 + 0.5 * out$g + 0.4 * out$t + 2 * out$d + sin(out$id / 7)
+parity_fixture <- out[, c("y", "g", "t", "d")]
+
+fit_parity <- fuzzydid(
+  data = parity_fixture,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  breps = 5,
+  seed = 1
+)
+
+stata_core <- c(
+  W_DID = 2.17430877504668,
+  W_TC = 2.18553887285118,
+  W_CIC = 2.31982319056988
+)
+
+r_core <- setNames(fit_parity$late$estimate, fit_parity$late$estimator)[c("W_DID", "W_TC", "W_CIC")]
+
+core_cmp <- data.frame(
+  estimator = names(stata_core),
+  R = unname(r_core),
+  Stata = unname(stata_core),
+  abs_diff = abs(unname(r_core) - unname(stata_core))
+)
+
+stopifnot(max(core_cmp$abs_diff) <= 1e-6)
+knitr::kable(core_cmp, digits = 8)
+
+# Save exact parity fixture for Stata users
+if (requireNamespace("haven", quietly = TRUE)) {
+  haven::write_dta(parity_fixture, "stata-parity-core-fixture.dta")
+}
+```
+
+Point estimates are strict parity targets. Standard errors and confidence
+intervals come from bootstrap simulation, so small cross-implementation
+differences can occur even when point estimates match.
+
+Equivalent Stata code:
+
+```stata
+* Load the same dataset exported in the parity check chunk
+use "stata-parity-core-fixture.dta", clear
+
+* Generate the group variable (already in dataset as 'g')
+* The Stata command expects G to identify treatment groups
+
+* Run fuzzydid
+fuzzydid y g t d, did tc cic breps(50)
+
+* Results are stored in e()
+matrix list e(b_LATE)
+matrix list e(se_LATE)
+matrix list e(ci_LATE)
+```
+
+## Key Parity Points
+
+The R package replicates Stata behavior in several important ways:
+
+### 1. Fixed Bootstrap Seed
+
+Both Stata and R implementations use a fixed seed (1) for bootstrap inference when standard errors are requested:
+
+```{r seed-parity}
+# These produce identical SE/CI despite different user-specified seeds
+fit1 <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, breps = 50, seed = 1)
+fit2 <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, breps = 50, seed = 999)
+
+all.equal(fit1$late$std.error, fit2$late$std.error)
+
+stata_seed_se <- 0.66310988000000
+seed_cmp <- data.frame(
+  estimator = "W_DID",
+  R_seed_1 = fit1$late$std.error[fit1$late$estimator == "W_DID"],
+  R_seed_999 = fit2$late$std.error[fit2$late$estimator == "W_DID"],
+  Stata = stata_seed_se
+)
+seed_cmp$abs_diff_R1_vs_Stata <- abs(seed_cmp$R_seed_1 - seed_cmp$Stata)
+seed_cmp$abs_diff_R999_vs_Stata <- abs(seed_cmp$R_seed_999 - seed_cmp$Stata)
+knitr::kable(seed_cmp, digits = 8)
+```
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-sim-fixture.dta", clear
+set seed 1
+fuzzydid y g t d, did breps(50)
+matrix se1 = e(se_LATE)
+
+set seed 999
+fuzzydid y g t d, did breps(50)
+matrix se2 = e(se_LATE)
+
+matrix list se1
+matrix list se2
+```
+
+### 2. Design Restrictions
+
+The R package enforces the same restrictions as Stata:
+
+```{r restrictions, error = TRUE}
+df_restrict <- transform(df, x = rnorm(nrow(df)))
+
+# CIC requires no covariates
+try({
+  fuzzydid(df_restrict, y ~ d + x, group = "g", time = "t", cic = TRUE)
+})
+
+# LQTE requires binary G, T, and D, plus no covariates
+try({
+  fuzzydid(df_restrict, y ~ d + x, group = "g", time = "t", lqte = TRUE)
+})
+```
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-sim-fixture.dta", clear
+gen x = rnormal()
+
+* CIC with covariates should error
+capture noisily fuzzydid y g t d x, cic
+
+* LQTE with covariates should error
+capture noisily fuzzydid y g t d x, lqte
+```
+
+### 3. Partial Identification Bounds
+
+For the Wald-TC estimator, when no stable control group exists, partial identification bounds can be computed:
+
+```{r partial}
+fit_partial <- fuzzydid(
+  data = df,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  tc = TRUE,
+  partial = TRUE,
+  breps = 50
+)
+
+knitr::kable(fit_partial$late)
+
+partial_gold <- read_parity_golden("stata-parity-partial-golden.csv")
+stata_partial <- stats::setNames(partial_gold$estimate, partial_gold$estimator)
+r_partial <- setNames(fit_partial$late$estimate, fit_partial$late$estimator)[names(stata_partial)]
+partial_cmp <- data.frame(
+  estimator = names(stata_partial),
+  R = unname(r_partial),
+  Stata = unname(stata_partial),
+  abs_diff = abs(unname(r_partial) - unname(stata_partial))
+)
+stopifnot(max(partial_cmp$abs_diff) <= 1e-6)
+knitr::kable(partial_cmp, digits = 8)
+```
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-sim-fixture.dta", clear
+fuzzydid y g t d, tc partial breps(50)
+matrix list e(b_LATE)
+```
+
+### 4. Equality Tests
+
+When multiple estimators are requested, equality tests can be performed:
+
+```{r eqtest}
+fit_eq <- fuzzydid(
+  data = parity_fixture,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  eqtest = TRUE,
+  breps = 5,
+  seed = 1
+)
+
+eq_gold <- read_parity_golden("stata-parity-eqtest-golden.csv")
+eq_cmp <- data.frame(
+  contrast = eq_gold$contrast,
+  R = fit_eq$eqtest$estimate,
+  Stata = eq_gold$estimate,
+  abs_diff = abs(fit_eq$eqtest$estimate - eq_gold$estimate)
+)
+stopifnot(max(eq_cmp$abs_diff) <= 1e-6)
+knitr::kable(eq_cmp, digits = 8)
+```
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-core-fixture.dta", clear
+fuzzydid y g t d, did tc cic eqtest breps(5)
+matrix list e(b_LATE_eqtest)
+```
+
+# Covariate Adjustment
+
+## Parametric Adjustment with modelx
+
+When covariates are included, conditional expectations can be estimated via OLS, logit, or probit:
+
+```{r covariates}
+# Add covariates
+set.seed(123)
+df$x1 <- rnorm(nrow(df))
+df$x2 <- factor(ifelse(runif(nrow(df)) > 0.5, "a", "b"))
+
+fit_modelx <- fuzzydid(
+  data = df,
+  formula = y ~ d + x1 + x2,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  modelx = c("ols", "ols"),
+  nose = TRUE
+)
+
+knitr::kable(fit_modelx$late)
+
+stata_modelx <- c(
+  W_DID = 2.03222780000000,
+  W_TC = 1.93062450000000
+)
+r_modelx <- setNames(fit_modelx$late$estimate, fit_modelx$late$estimator)[names(stata_modelx)]
+modelx_cmp <- data.frame(
+  estimator = names(stata_modelx),
+  R = unname(r_modelx),
+  Stata = unname(stata_modelx),
+  abs_diff = abs(unname(r_modelx) - unname(stata_modelx))
+)
+knitr::kable(modelx_cmp, digits = 8)
+
+if (requireNamespace("haven", quietly = TRUE)) {
+  haven::write_dta(df[, c("y", "g", "t", "d", "x1", "x2")], "stata-parity-covariates-fixture.dta")
+}
+```
+
+For binary treatments, `modelx` requires two entries:
+
+1. Method for E(Y_{gt}|X) and E(Y_{dgt}|X)
+2. Method for E(D_{gt}|X)
+
+For multi-valued treatments, a third entry specifies the method for P(D_{gt}=d|X).
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-covariates-fixture.dta", clear
+fuzzydid y g t d, did tc continuous(x1) qualitative(x2) modelx(ols ols)
+matrix list e(b_LATE)
+```
+
+## Nonparametric Adjustment with Sieves
+
+Continuous covariates can be handled nonparametrically:
+
+```{r sieves}
+fit_sieves <- fuzzydid(
+  data = df,
+  formula = y ~ d + x1,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  sieves = TRUE,
+  nose = TRUE
+)
+
+knitr::kable(fit_sieves$late)
+
+stata_sieves <- c(
+  W_DID = 2.00081280000000,
+  W_TC = 1.93678270000000
+)
+r_sieves <- setNames(fit_sieves$late$estimate, fit_sieves$late$estimator)[names(stata_sieves)]
+sieves_cmp <- data.frame(
+  estimator = names(stata_sieves),
+  R = unname(r_sieves),
+  Stata = unname(stata_sieves),
+  abs_diff = abs(unname(r_sieves) - unname(stata_sieves))
+)
+knitr::kable(sieves_cmp, digits = 8)
+```
+
+When `sieves = TRUE`, leaving `sieveorder = NULL` uses deterministic 5-fold cross-validation (Stata-parity default). You may also pass a scalar `sieveorder` to set a fixed order for both outcome and treatment sieve bases.
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-covariates-fixture.dta", clear
+fuzzydid y g t d, did tc continuous(x1) sieves
+matrix list e(b_LATE)
+```
+
+# LQTE Estimation
+
+For quantile treatment effects at the 5th through 95th percentiles:
+
+```{r lqte}
+lqte_gold <- read_parity_golden("stata-parity-lqte-golden.csv")
+fit_lqte <- fuzzydid(
+  data = parity_fixture,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  lqte = TRUE,
+  nose = TRUE,
+  seed = 1
+)
+
+lqte_cmp <- data.frame(
+  quantile = lqte_gold$quantile,
+  R = fit_lqte$lqte$estimate,
+  Stata = lqte_gold$estimate,
+  abs_diff = abs(fit_lqte$lqte$estimate - lqte_gold$estimate)
+)
+stopifnot(max(lqte_cmp$abs_diff) <= 1e-6)
+knitr::kable(head(lqte_cmp, 10), digits = 8)
+```
+
+Note: LQTE requires binary G, T, and D with no covariates.
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-core-fixture.dta", clear
+fuzzydid y g t d, lqte
+matrix list e(b_LQTE)
+```
+
+# Multi-Period Designs
+
+For designs with more than two periods, use `group_forward`:
+
+```{r multiperiod}
+set.seed(7)
+n_mp <- 70
+
+make_mp_cell <- function(gb, gf, t, prob, shift = 0) {
+  d <- rbinom(n_mp, 1, prob)
+  y <- 1 + 0.35 * t + 1.6 * d + shift + rnorm(n_mp, sd = 0.25)
+  data.frame(y = y, d = d, gb = gb, gf = gf, t = t)
+}
+
+df_mp <- rbind(
+  make_mp_cell(gb = 0, gf = 0, t = 0, prob = 0.20),
+  make_mp_cell(gb = 0, gf = 0, t = 1, prob = 0.30),
+  make_mp_cell(gb = 0, gf = 0, t = 2, prob = 0.35),
+  make_mp_cell(gb = 0, gf = 1, t = 0, prob = 0.30, shift = 0.2),
+  make_mp_cell(gb = 1, gf = 1, t = 1, prob = 0.60, shift = 0.8),
+  make_mp_cell(gb = 1, gf = 0, t = 2, prob = 0.75, shift = 1.1)
+)
+
+fit_mp <- fuzzydid(
+  data = df_mp,
+  formula = y ~ d,
+  group = "gb",
+  group_forward = "gf",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  nose = TRUE
+)
+
+knitr::kable(fit_mp$late)
+
+if (requireNamespace("haven", quietly = TRUE)) {
+  haven::write_dta(df_mp, "stata-parity-multiperiod-fixture.dta")
+}
+```
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-multiperiod-fixture.dta", clear
+fuzzydid y gb t d, groupf(gf) did tc
+matrix list e(b_LATE)
+```
+
+# Bootstrap Diagnostics
+
+The package tracks bootstrap failures (degenerate resamples):
+
+```{r bootstrap-diag}
+df_diag <- parity_fixture
+df_diag$cl <- rep(seq_len(24L), each = 20L)
+cluster_gold <- read_parity_golden("stata-parity-cluster-golden.csv")
+
+fit_diag <- fuzzydid(
+  data = df_diag,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  cluster = "cl",
+  breps = 20,
+  seed = 1
+)
+
+diag_cmp <- data.frame(
+  metric = c("N.reps", "N.misreps", "Share.failures"),
+  R = c(fit_diag$n_reps, fit_diag$n_misreps, fit_diag$share_failures),
+  Stata = c(cluster_gold$n_reps[[1]], cluster_gold$n_misreps[[1]], cluster_gold$share_failures[[1]])
+)
+
+stopifnot(abs(diag_cmp$R[3] - diag_cmp$Stata[3]) <= 1e-12)
+stopifnot(diag_cmp$R[1] == diag_cmp$Stata[1], diag_cmp$R[2] == diag_cmp$Stata[2])
+knitr::kable(diag_cmp, digits = 8)
+
+if (requireNamespace("haven", quietly = TRUE)) {
+  haven::write_dta(df_diag, "stata-parity-cluster-fixture.dta")
+}
+```
+
+Equivalent Stata code:
+
+```stata
+use "stata-parity-cluster-fixture.dta", clear
+fuzzydid y g t d, did tc cic cluster(cl) breps(20)
+display e(N_reps)
+display e(N_misreps)
+display e(share_failures)
+```
+
+# References
+
+de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://academic.oup.com/restud/article/85/2/999/4096388). *Review of Economic Studies*, 85(2): 999-1028.

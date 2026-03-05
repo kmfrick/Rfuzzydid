@@ -64,8 +64,11 @@ ordered multi-valued treatments.}
 
 \item{sieves}{Logical; use sieve expansion for continuous covariates.}
 
-\item{sieveorder}{Optional length-2 numeric vector for sieve orders (outcome,
-treatment).}
+\item{sieveorder}{Optional sieve order control for `sieves = TRUE`.
+`NULL` (default) selects order by deterministic 5-fold CV.
+A scalar value applies to both outcome and treatment sieve bases.
+A length-2 vector is accepted for backward compatibility and interpreted
+as `(outcome_order, treatment_order)`.}
 
 \item{tagobs}{Logical; return logical mask of observations used.}
 
