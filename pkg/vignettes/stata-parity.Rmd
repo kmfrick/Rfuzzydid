@@ -662,4 +662,4 @@ display e(share_failures)
 
 # References
 
-de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://academic.oup.com/restud/article/85/2/999/4096388). *Review of Economic Studies*, 85(2): 999-1028.
+de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://doi.org/10.1093/restud/rdx049). *Review of Economic Studies*, 85(2): 999-1028.
