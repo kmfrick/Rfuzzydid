@@ -1344,7 +1344,11 @@ fuzzydid <- function(
 .bootstrap_native <- function(df, prepared, opts, point) {
   boot_sentinel <- 1000000000000000
   if (opts$nose) return(NULL)
-  # Stata parity: bootstrap always runs with seed(1), independent of user seed.
+  # Stata parity: lock bootstrap RNG semantics to avoid cross-version drift.
+  old_rng <- RNGkind()
+  on.exit(do.call(RNGkind, as.list(old_rng)), add = TRUE)
+  RNGversion("4.3.0")
+  # Bootstrap always runs with seed(1), independent of user seed.
   set.seed(1L)
 
   late_names <- names(point$late)
