@@ -17,9 +17,20 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-This vignette demonstrates how to use **Rfuzzydid** to replicate the Duflo (2001) school construction program analysis using fuzzy difference-in-differences, following the methodology of de Chaisemartin and D'Haultfoeuille (2018).
+This vignette walks through a concrete replication exercise: re-estimating the
+Duflo (2001) INPRES specification with `Rfuzzydid`.
 
-The data comes from the INPRES school construction program in Indonesia, examining the effect of education on wages. We use the bundled `inpresdata.dta` file shipped in `inst/extdata`, sourced from [droodman/Duflo2001](https://github.com/droodman/Duflo2001/blob/main/inpresdata.dta).
+The key idea is to recover the wage return to schooling from cohort-by-district
+variation in treatment intensity, using the fuzzy DID estimators in
+de Chaisemartin and D'Haultfoeuille (2018).
+
+The dataset is the bundled `inpresdata.dta` file in `inst/extdata`. The file
+originates from David Roodman's replication materials
+([droodman/Duflo2001](https://github.com/droodman/Duflo2001/blob/main/inpresdata.dta)).
+In the companion archive README
+([droodman/Duflo-2001](https://github.com/droodman/Duflo-2001)), he notes that
+the main 1995 SUPAS file is "not contained in this repository" and links to
+that downloadable location.
 
 # Data Preparation
 
@@ -29,17 +40,56 @@ The data comes from the INPRES school construction program in Indonesia, examini
 library(Rfuzzydid)
 library(foreign)
 
-# Load bundled INPRES data from the installed package
+# Resolve package root when rendering inside source tree
+find_local_pkg_dir <- function() {
+  roots <- c(".", "..", "../..")
+
+  for (root in roots) {
+    pkg_desc <- file.path(root, "pkg", "DESCRIPTION")
+    root_desc <- file.path(root, "DESCRIPTION")
+
+    if (file.exists(pkg_desc)) {
+      return(file.path(root, "pkg"))
+    }
+
+    if (file.exists(root_desc)) {
+      desc <- tryCatch(read.dcf(root_desc), error = function(e) NULL)
+      if (!is.null(desc) && "Package" %in% colnames(desc) && identical(desc[1, "Package"], "Rfuzzydid")) {
+        return(root)
+      }
+    }
+  }
+
+  NULL
+}
+
+# First try installed package location, then source-tree fallback
 data_path <- system.file("extdata", "inpresdata.dta", package = "Rfuzzydid")
 if (identical(data_path, "")) {
-  stop("Bundled dataset 'inpresdata.dta' was not found in extdata.")
+  local_pkg_dir <- find_local_pkg_dir()
+  local_path <- if (!is.null(local_pkg_dir)) {
+    file.path(local_pkg_dir, "inst", "extdata", "inpresdata.dta")
+  } else {
+    ""
+  }
+
+  if (file.exists(local_path)) {
+    data_path <- local_path
+  } else {
+    stop("Bundled dataset 'inpresdata.dta' was not found in installed package or source-tree extdata.")
+  }
 }
 raw <- read.dta(data_path)
 ```
 
 ## Constructing the Analysis Sample
 
-Following the original analysis, we restrict to cohorts 1957-1962 (control) and 1968-1972 (treated):
+Following the original design, we keep two cohort windows:
+
+- 1957-1962 (earlier cohort)
+- 1968-1972 (later cohort)
+
+The `t` indicator equals 1 for the later cohort.
 
 ```{r sample-construction}
 # Define cohort groups
@@ -57,7 +107,9 @@ dat$t <- as.integer(dat$p504thn >= 68 & dat$p504thn <= 72)
 
 ## Constructing Group Variables
 
-The fuzzy DID methodology constructs super-groups based on whether education evolved differently across districts. We use chi-square tests to classify districts:
+The original Stata workflow builds "super-groups" based on how schooling
+changes within district between the two cohort windows. We follow the same
+logic with a chi-square screen and the sign of the change in mean schooling:
 
 ```{r group-construction}
 pval_threshold <- 0.5
@@ -80,7 +132,7 @@ for (g in districts) {
 dat$gstar <- unname(gstar_map[as.character(dat$birthpl)])
 ```
 
-This creates three super-groups:
+This produces three groups:
 
 - `gstar = 1`: Districts where education increased (treatment intensity rose)
 - `gstar = -1`: Districts where education decreased
@@ -88,7 +140,7 @@ This creates three super-groups:
 
 # Two-Arm Estimation
 
-The analysis estimates effects separately for two treatment arms, then aggregates:
+As in the paper's setup, we estimate two arms separately and combine them after:
 
 ## Arm 1: Districts with Increasing Education (g* = 1 vs g* = 0)
 
@@ -136,7 +188,13 @@ knitr::kable(fit_dec$late)
 
 # Aggregating Results
 
-Following the paper, results are aggregated using treatment-intensity weights:
+To aggregate, we weight each arm by:
+
+- its sample share (`p_inc`, `p_dec`)
+- its first-stage strength (the DID in schooling, `dD_inc`, `dD_dec`)
+
+The decreasing arm uses `-dD_dec` so both weights are on a comparable
+"increase in treatment" scale.
 
 ```{r aggregate}
 # Treatment intensity weights
@@ -178,7 +236,145 @@ cat(sprintf("CIC = %.6f\n", cic_agg))
 
 # Comparison with Stata
 
-The equivalent Stata code is available in the [Duflo2001 repository](https://github.com/droodman/Duflo2001). **Note:** Point estimates from R and Stata will be identical, but bootstrap confidence intervals will differ due to RNG differences between platforms. Results remain comparable across implementations.
+The following one-shot Stata code starts from `inpresdata.dta` and reproduces
+the arm-level and aggregate point estimates:
+
+```stata
+clear all
+set more off
+
+local pval_threshold 0.5
+
+use inpresdata.dta, clear
+keep if lhwage < . & yeduc < . & (inrange(p504thn,57,62) | inrange(p504thn,68,72))
+
+gen byte t = inrange(p504thn,68,72)
+gen gstar = .
+levelsof birthpl, local(districts)
+
+local pval_threshold = 0.05 
+quietly foreach g of local districts {
+    tab yeduc t if birthpl == `g', chi2
+    scalar p = r(p)
+    summarize yeduc if t == 1 & birthpl == `g', meanonly
+    scalar m1 = r(mean)
+    summarize yeduc if t == 0 & birthpl == `g', meanonly
+    scalar m0 = r(mean)
+    scalar evol = m1 - m0
+    replace gstar = (scalar(evol) > 0 & scalar(p) < `pval_threshold') - (scalar(evol) < 0 & scalar(p) < `pval_threshold') if birthpl == `g'
+}
+
+gen byte inc = (gstar == 1)
+gen byte dec = (gstar == -1)
+summarize inc, meanonly
+scalar p_inc = r(mean)
+summarize dec, meanonly
+scalar p_dec = r(mean)
+
+* Arm g*=1 vs g*=0
+preserve
+keep if gstar >= 0
+gen byte G = (gstar == 1)
+fuzzydid lhwage G t yeduc, did tc cic newcateg(5 8 11 14 1000) nose
+matrix M = e(b_LATE)
+scalar did_inc = M[1,1]
+scalar tc_inc  = M[2,1]
+scalar cic_inc = M[3,1]
+
+summarize yeduc if G == 1 & t == 1, meanonly
+scalar D11 = r(mean)
+summarize yeduc if G == 1 & t == 0, meanonly
+scalar D10 = r(mean)
+summarize yeduc if G == 0 & t == 1, meanonly
+scalar D01 = r(mean)
+summarize yeduc if G == 0 & t == 0, meanonly
+scalar D00 = r(mean)
+scalar dD_inc = (D11 - D10) - (D01 - D00)
+restore
+
+* Arm g*=-1 vs g*=0
+preserve
+keep if gstar <= 0
+gen byte G = (gstar == -1)
+fuzzydid lhwage G t yeduc, did tc cic newcateg(5 8 11 14 1000) nose
+matrix M = e(b_LATE)
+scalar did_dec = M[1,1]
+scalar tc_dec  = M[2,1]
+scalar cic_dec = M[3,1]
+
+summarize yeduc if G == 1 & t == 1, meanonly
+scalar D11m = r(mean)
+summarize yeduc if G == 1 & t == 0, meanonly
+scalar D10m = r(mean)
+summarize yeduc if G == 0 & t == 1, meanonly
+scalar D01m = r(mean)
+summarize yeduc if G == 0 & t == 0, meanonly
+scalar D00m = r(mean)
+scalar dD_dec_pos = -((D11m - D10m) - (D01m - D00m))
+restore
+
+scalar w_inc = p_inc * dD_inc
+scalar w_dec = p_dec * dD_dec_pos
+
+scalar did_agg = (did_inc * w_inc + did_dec * w_dec) / (w_inc + w_dec)
+scalar tc_agg  = (tc_inc  * w_inc + tc_dec  * w_dec) / (w_inc + w_dec)
+scalar cic_agg = (cic_inc * w_inc + cic_dec * w_dec) / (w_inc + w_dec)
+
+display "Arm g*=1: DID = " %9.6f did_inc " ; TC = " %9.6f tc_inc " ; CIC = " %9.6f cic_inc
+display "Arm g*=-1: DID = " %9.6f did_dec " ; TC = " %9.6f tc_dec " ; CIC = " %9.6f cic_dec
+display "AGG DID = " %9.6f did_agg
+display "AGG TC  = " %9.6f tc_agg
+display "AGG CIC = " %9.6f cic_agg
+```
+
+Running that code in Stata reports:
+
+- Arm `g*=1`: DID = `0.123679191`, TC = `0.079868219`, CIC = `0.074316049`
+- Arm `g*=-1`: DID = `0.117024113`, TC = `0.109567707`, CIC = `0.114301855`
+- Aggregate: DID = `0.122244473`, TC = `0.086270906`, CIC = `0.082936285`
+
+The next chunk checks parity directly in R:
+
+```{r stata-parity-check}
+stata_vals <- c(
+  did_inc = 0.123679191,
+  tc_inc = 0.079868219,
+  cic_inc = 0.074316049,
+  did_dec = 0.117024113,
+  tc_dec = 0.109567707,
+  cic_dec = 0.114301855,
+  did_agg = 0.122244473,
+  tc_agg = 0.086270906,
+  cic_agg = 0.082936285
+)
+
+r_vals <- c(
+  did_inc = did_inc,
+  tc_inc = tc_inc,
+  cic_inc = cic_inc,
+  did_dec = did_dec,
+  tc_dec = tc_dec,
+  cic_dec = cic_dec,
+  did_agg = did_agg,
+  tc_agg = tc_agg,
+  cic_agg = cic_agg
+)
+
+cmp <- data.frame(
+  estimate = names(stata_vals),
+  R = unname(r_vals),
+  Stata = unname(stata_vals),
+  abs_diff = abs(unname(r_vals) - unname(stata_vals))
+)
+
+knitr::kable(cmp, digits = 6)
+
+stopifnot(max(cmp$abs_diff) < 1e-6)
+```
+
+Point estimates match to numerical tolerance. Confidence intervals can still
+differ when bootstrap is enabled, because draws and RNG streams differ across
+software.
 
 # References
 
