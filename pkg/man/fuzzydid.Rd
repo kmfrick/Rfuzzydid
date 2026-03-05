@@ -56,11 +56,11 @@ fuzzydid(
 
 \item{eqtest}{Logical; compute equality tests across requested LATE estimands.}
 
-\item{modelx}{Reserved for native covariate-adjusted methods (\code{ols}, \code{logit}, \code{probit}); currently unsupported.}
+\item{modelx}{Optional native covariate-adjusted methods (\code{ols}, \code{logit}, \code{probit}).}
 
-\item{sieves}{Reserved for native sieve estimation; currently unsupported.}
+\item{sieves}{Logical; use sieve expansion for continuous covariates.}
 
-\item{sieveorder}{Optional length-2 numeric vector for sieve orders.}
+\item{sieveorder}{Optional length-2 numeric vector for sieve orders (outcome, treatment).}
 
 \item{tagobs}{Logical; return logical mask of observations used.}
 

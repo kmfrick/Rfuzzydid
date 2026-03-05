@@ -3,9 +3,10 @@ R package for corrected estimators in fuzzy difference-in-differences designs pr
 
 ## Current status
 
-- Formula-first API: `fuzzydid(data, y ~ d, group = ..., time = ...)`.
-- Native R backend for two-period `did`/`tc`/`cic` estimation.
-- Stata delegation has been removed from runtime paths.
-- Parity tests compare native estimates against frozen Stata golden fixtures.
+- Formula-first API: `fuzzydid(data, y ~ d + x, group = ..., time = ...)`.
+- Native R backend supports `did`, `tc`, `cic`, `lqte`, and `partial` (with design restrictions matching Stata-style checks).
+- Multi-period designs are supported through `group` + `group_forward`.
+- Covariate-adjusted DID/TC supports `modelx`, `sieves`, and `sieveorder`.
+- A vendored Stata snapshot is shipped under `inst/stata/fuzzydid` for parity reference.
 
-See `?fuzzydid` for options and backend behavior.
+See `?fuzzydid` for option-level constraints and behavior.

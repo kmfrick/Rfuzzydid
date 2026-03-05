@@ -1,0 +1,30 @@
+Stata fuzzydid SSC snapshot for parity testing in Rfuzzydid.
+
+Source:
+- Installed via: ssc install fuzzydid, replace
+- Registry: SSC (Boston College RePEc)
+- Snapshot date (UTC): 2026-03-05
+
+Observed command paths at snapshot time:
+- fuzzydid.ado: /Users/kmfrick/Library/Application Support/Stata/ado/plus/f/fuzzydid.ado
+- five_fold_cv.ado: /Users/kmfrick/Library/Application Support/Stata/ado/plus/f/five_fold_cv.ado
+
+Observed Stata build:
+- StataNow/SE 19.5 for Unix (Apple Silicon)
+- Revision 06 Oct 2025
+
+Vendored files in this directory:
+- fuzzydid.sthlp
+- fuzzydid.ado
+- five_fold_cv.ado
+- estim_wrapper.ado
+- late_estim_nox.ado
+- late_estim_x.ado
+- lqte_estim_nox.ado
+- legendrisation.ado
+- special_cases.ado
+- build_cond_expectation_1.ado
+- build_cond_expectation_2.ado
+- createyvalues.mo
+- my_sort.mo
+- qq_transfo.mo
