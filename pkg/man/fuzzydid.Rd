@@ -32,17 +32,19 @@ fuzzydid(
 \arguments{
 \item{data}{Data frame.}
 
-\item{formula}{Formula of the form \code{y ~ d + covariates}.}
+\item{formula}{Formula of the form `y ~ d + covariates`.}
 
 \item{group}{Name of the group variable (backward group for multi-period).}
 
 \item{time}{Name of the time variable.}
 
-\item{group_forward}{Optional name of the forward group variable for multi-period designs.}
+\item{group_forward}{Optional name of the forward group variable for
+multi-period designs.}
 
 \item{did, tc, cic, lqte}{Logical flags indicating estimators to compute.}
 
-\item{newcateg}{Optional numeric vector of upper bounds used to recategorize treatment values for TC/CIC.}
+\item{newcateg}{Optional numeric vector of upper bounds used to recategorize
+treatment values for TC/CIC.}
 
 \item{numerator}{Logical; return estimator numerators for DID/TC/CIC.}
 
@@ -56,20 +58,25 @@ fuzzydid(
 
 \item{eqtest}{Logical; compute equality tests across requested LATE estimands.}
 
-\item{modelx}{Optional native covariate-adjusted methods (\code{ols}, \code{logit}, \code{probit}).}
+\item{modelx}{Optional native covariate-adjusted methods (`ols`, `logit`,
+`probit`). Two entries are required for binary treatments and three for
+ordered multi-valued treatments.}
 
 \item{sieves}{Logical; use sieve expansion for continuous covariates.}
 
-\item{sieveorder}{Optional length-2 numeric vector for sieve orders (outcome, treatment).}
+\item{sieveorder}{Optional length-2 numeric vector for sieve orders (outcome,
+treatment).}
 
 \item{tagobs}{Logical; return logical mask of observations used.}
 
-\item{backend}{One of \code{"auto"} or \code{"native"}. \code{"stata"} is no longer supported and errors.}
+\item{backend}{One of `"auto"` or `"native"`. `"stata"` is no longer
+supported and errors.}
 
-\item{seed}{Bootstrap/random seed.}
+\item{seed}{Preserved for API compatibility. Bootstrap inference uses a
+fixed Stata-parity seed (`1`) when `nose = FALSE`.}
 }
 \value{
-An object of class \code{fuzzydid}.
+An object of class `fuzzydid`.
 }
 \description{
 Formula-first interface for fuzzy difference-in-differences estimators.

@@ -26,7 +26,8 @@
 #' @param tagobs Logical; return logical mask of observations used.
 #' @param backend One of `"auto"` or `"native"`. `"stata"` is no longer
 #'   supported and errors.
-#' @param seed Bootstrap/random seed.
+#' @param seed Preserved for API compatibility. Bootstrap inference uses a
+#'   fixed Stata-parity seed (`1`) when `nose = FALSE`.
 #' @return An object of class `fuzzydid`.
 #' @export
 fuzzydid <- function(
@@ -1122,26 +1123,32 @@ fuzzydid <- function(
 }
 
 .bootstrap_native <- function(df, prepared, opts, point) {
+  boot_sentinel <- 1000000000000000
   if (opts$nose) return(NULL)
-  set.seed(as.integer(opts$seed))
+  # Stata parity: bootstrap always runs with seed(1), independent of user seed.
+  set.seed(1L)
 
   late_names <- names(point$late)
   lqte_names <- names(point$lqte)
+  n_reps <- as.integer(opts$breps)
+  n_misreps <- 0L
 
   reps_late <- if (length(late_names) > 0L) {
-    matrix(NA_real_, nrow = as.integer(opts$breps), ncol = length(late_names), dimnames = list(NULL, late_names))
+    matrix(NA_real_, nrow = n_reps, ncol = length(late_names), dimnames = list(NULL, late_names))
   } else {
     NULL
   }
 
   reps_lqte <- if (length(lqte_names) > 0L) {
-    matrix(NA_real_, nrow = as.integer(opts$breps), ncol = length(lqte_names), dimnames = list(NULL, lqte_names))
+    matrix(NA_real_, nrow = n_reps, ncol = length(lqte_names), dimnames = list(NULL, lqte_names))
   } else {
     NULL
   }
 
   n <- nrow(df)
-  for (b in seq_len(as.integer(opts$breps))) {
+  for (b in seq_len(n_reps)) {
+    degenerate_correction <- if (stats::runif(1) < 0.5) -boot_sentinel else boot_sentinel
+
     if (is.null(opts$cluster)) {
       idx <- sample.int(n, size = n, replace = TRUE)
     } else {
@@ -1155,22 +1162,43 @@ fuzzydid <- function(
       error = function(...) NULL
     )
 
-    if (is.null(est_b)) {
+    late_vals <- NULL
+    lqte_vals <- NULL
+    invalid_rep <- is.null(est_b)
+
+    if (!invalid_rep && !is.null(reps_late)) {
+      late_vals <- as.numeric(est_b$late[late_names])
+      invalid_rep <- length(late_vals) != length(late_names) || any(!is.finite(late_vals))
+    }
+
+    if (!invalid_rep && !is.null(reps_lqte)) {
+      lqte_vals <- as.numeric(est_b$lqte[lqte_names])
+      invalid_rep <- length(lqte_vals) != length(lqte_names) || any(!is.finite(lqte_vals))
+    }
+
+    if (invalid_rep) {
+      n_misreps <- n_misreps + 1L
+      if (!is.null(reps_late)) reps_late[b, ] <- degenerate_correction
+      if (!is.null(reps_lqte)) reps_lqte[b, ] <- degenerate_correction
       next
     }
 
     if (!is.null(reps_late)) {
-      vals <- est_b$late[late_names]
-      reps_late[b, ] <- as.numeric(vals)
+      reps_late[b, ] <- late_vals
     }
 
     if (!is.null(reps_lqte)) {
-      vals <- est_b$lqte[lqte_names]
-      reps_lqte[b, ] <- as.numeric(vals)
+      reps_lqte[b, ] <- lqte_vals
     }
   }
 
-  list(reps_late = reps_late, reps_lqte = reps_lqte)
+  list(
+    reps_late = reps_late,
+    reps_lqte = reps_lqte,
+    n_reps = n_reps,
+    n_misreps = n_misreps,
+    share_failures = if (n_reps > 0L) n_misreps / n_reps else NA_real_
+  )
 }
 
 .pairwise_eqtest <- function(estimates_named) {
@@ -1191,6 +1219,8 @@ fuzzydid <- function(
     return(list(se = numeric(0), ci = matrix(numeric(0), ncol = 2)))
   }
 
+  reps <- .recode_bootstrap_sentinel(reps)
+
   se <- apply(reps, 2, function(x) {
     if (all(is.na(x))) return(NA_real_)
     stats::sd(x, na.rm = TRUE)
@@ -1202,6 +1232,13 @@ fuzzydid <- function(
   }))
 
   list(se = as.numeric(se), ci = ci)
+}
+
+.recode_bootstrap_sentinel <- function(x) {
+  if (is.null(x)) return(x)
+  boot_sentinel <- 1000000000000000
+  x[x == boot_sentinel | x == -boot_sentinel] <- NA_real_
+  x
 }
 
 .compute_counts <- function(df, prepared) {
@@ -1259,8 +1296,14 @@ fuzzydid <- function(
   matrices <- list(
     b_LATE = .to_column_matrix(late$estimate, late$estimator)
   )
+  n_reps <- NA_integer_
+  n_misreps <- NA_integer_
+  share_failures <- NA_real_
 
   if (!opts$nose) {
+    n_reps <- bt$n_reps
+    n_misreps <- bt$n_misreps
+    share_failures <- bt$share_failures
     late_boot <- .calc_boot_summary(bt$reps_late)
     late$std.error <- late_boot$se
     if (length(late_boot$se) > 0L) {
@@ -1303,8 +1346,9 @@ fuzzydid <- function(
       )
 
       if (!opts$nose && !is.null(bt$reps_late)) {
-        eq_reps <- t(apply(bt$reps_late, 1, function(row) {
-          .pairwise_eqtest(stats::setNames(as.numeric(row), colnames(bt$reps_late)))
+        reps_late_clean <- .recode_bootstrap_sentinel(bt$reps_late)
+        eq_reps <- t(apply(reps_late_clean, 1, function(row) {
+          .pairwise_eqtest(stats::setNames(as.numeric(row), colnames(reps_late_clean)))
         }))
 
         if (!is.null(eq_reps) && ncol(eq_reps) > 0L) {
@@ -1336,7 +1380,10 @@ fuzzydid <- function(
     n11 = counts$n11,
     n10 = counts$n10,
     n01 = counts$n01,
-    n00 = counts$n00
+    n00 = counts$n00,
+    n_reps = n_reps,
+    n_misreps = n_misreps,
+    share_failures = share_failures
   )
 }
 
@@ -1454,6 +1501,9 @@ glance.fuzzydid <- function(x, ...) {
     N.10 = x$n10,
     N.01 = x$n01,
     N.00 = x$n00,
+    N.reps = x$n_reps,
+    N.misreps = x$n_misreps,
+    Share.failures = x$share_failures,
     stringsAsFactors = FALSE
   )
 }
