@@ -1,5 +1,6 @@
 ^\.DS_Store$
 ^\.Rcheck$
+^\.github$
 ^\.\.?Rcheck$
 ^Rfuzzydid\.Rcheck$
 ^Rfuzzydid_.*\.tar\.gz$
