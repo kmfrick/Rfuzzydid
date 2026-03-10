@@ -33,7 +33,37 @@
 #'   supported and errors.
 #' @param seed Preserved for API compatibility. Bootstrap inference uses a
 #'   fixed Stata-parity seed (`1`) when `nose = FALSE`.
-#' @return An object of class `fuzzydid`.
+#' @return An object of class `fuzzydid` containing estimator tables, optional
+#'   bootstrap diagnostics, and Stata-parity matrices.
+#' @examples
+#' make_example_cell <- function(g, t, ones, n_cell = 20L) {
+#'   data.frame(
+#'     g = rep.int(g, n_cell),
+#'     t = rep.int(t, n_cell),
+#'     d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+#'   )
+#' }
+#'
+#' df <- rbind(
+#'   make_example_cell(0L, 0L, 4L),
+#'   make_example_cell(0L, 1L, 8L),
+#'   make_example_cell(1L, 0L, 6L),
+#'   make_example_cell(1L, 1L, 16L)
+#' )
+#' df$id <- seq_len(nrow(df))
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+#'
+#' fit <- fuzzydid(
+#'   data = df[, c("y", "g", "t", "d")],
+#'   formula = y ~ d,
+#'   group = "g",
+#'   time = "t",
+#'   did = TRUE,
+#'   tc = TRUE,
+#'   nose = TRUE
+#' )
+#'
+#' fit$late
 #' @export
 fuzzydid <- function(
   data,
@@ -1645,6 +1675,35 @@ fuzzydid <- function(
 #' @description Print a compact summary table for fuzzydid results.
 #' @param object A fuzzydid object.
 #' @param ... Unused.
+#' @return `object`, invisibly, after printing the available estimator tables.
+#' @examples
+#' make_example_cell <- function(g, t, ones, n_cell = 20L) {
+#'   data.frame(
+#'     g = rep.int(g, n_cell),
+#'     t = rep.int(t, n_cell),
+#'     d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+#'   )
+#' }
+#'
+#' df <- rbind(
+#'   make_example_cell(0L, 0L, 4L),
+#'   make_example_cell(0L, 1L, 8L),
+#'   make_example_cell(1L, 0L, 6L),
+#'   make_example_cell(1L, 1L, 16L)
+#' )
+#' df$id <- seq_len(nrow(df))
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+#'
+#' fit <- fuzzydid(
+#'   data = df[, c("y", "g", "t", "d")],
+#'   formula = y ~ d,
+#'   group = "g",
+#'   time = "t",
+#'   did = TRUE,
+#'   nose = TRUE
+#' )
+#'
+#' summary(fit)
 #' @export
 summary.fuzzydid <- function(object, ...) {
   if (!inherits(object, "fuzzydid")) {
@@ -1675,6 +1734,37 @@ summary.fuzzydid <- function(object, ...) {
 #' @description Tidy extractor for `fuzzydid` objects.
 #' @param x A fuzzydid object.
 #' @param ... Unused.
+#' @return A data frame with one row per available estimate and standardized
+#'   columns such as `component`, `term`, `estimate`, and confidence interval
+#'   bounds.
+#' @examples
+#' make_example_cell <- function(g, t, ones, n_cell = 20L) {
+#'   data.frame(
+#'     g = rep.int(g, n_cell),
+#'     t = rep.int(t, n_cell),
+#'     d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+#'   )
+#' }
+#'
+#' df <- rbind(
+#'   make_example_cell(0L, 0L, 4L),
+#'   make_example_cell(0L, 1L, 8L),
+#'   make_example_cell(1L, 0L, 6L),
+#'   make_example_cell(1L, 1L, 16L)
+#' )
+#' df$id <- seq_len(nrow(df))
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+#'
+#' fit <- fuzzydid(
+#'   data = df[, c("y", "g", "t", "d")],
+#'   formula = y ~ d,
+#'   group = "g",
+#'   time = "t",
+#'   did = TRUE,
+#'   nose = TRUE
+#' )
+#'
+#' generics::tidy(fit)
 #' @export
 tidy.fuzzydid <- function(x, ...) {
   if (!inherits(x, "fuzzydid")) {
@@ -1742,6 +1832,36 @@ tidy.fuzzydid <- function(x, ...) {
 #' @description One-row summary for `fuzzydid` objects.
 #' @param x A fuzzydid object.
 #' @param ... Unused.
+#' @return A one-row data frame containing observation counts, backend
+#'   information, and bootstrap replication diagnostics.
+#' @examples
+#' make_example_cell <- function(g, t, ones, n_cell = 20L) {
+#'   data.frame(
+#'     g = rep.int(g, n_cell),
+#'     t = rep.int(t, n_cell),
+#'     d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+#'   )
+#' }
+#'
+#' df <- rbind(
+#'   make_example_cell(0L, 0L, 4L),
+#'   make_example_cell(0L, 1L, 8L),
+#'   make_example_cell(1L, 0L, 6L),
+#'   make_example_cell(1L, 1L, 16L)
+#' )
+#' df$id <- seq_len(nrow(df))
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+#'
+#' fit <- fuzzydid(
+#'   data = df[, c("y", "g", "t", "d")],
+#'   formula = y ~ d,
+#'   group = "g",
+#'   time = "t",
+#'   did = TRUE,
+#'   nose = TRUE
+#' )
+#'
+#' generics::glance(fit)
 #' @export
 glance.fuzzydid <- function(x, ...) {
   if (!inherits(x, "fuzzydid")) {

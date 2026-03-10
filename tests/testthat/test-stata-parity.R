@@ -23,15 +23,27 @@ make_parity_fixture <- function() {
   df[, c("y", "g", "t", "d", "cl")]
 }
 
+# Generated once from local Stata via tools/generate-stata-parity-goldens.R and
+# intentionally hardcoded so the test suite does not require Stata at runtime.
 stata_core_golden <- c(
-  did = 2.17430884241085,
-  tc = 2.18553890987232,
-  cic = 2.31982316267324
+  did = 2.17430877504668,
+  tc = 2.18553887285118,
+  cic = 2.31982319056988
 )
 
 stata_cell_counts <- c(n11 = 120L, n10 = 120L, n01 = 120L, n00 = 120L)
 
-stata_lqte_golden <- data.frame(
+stata_partial_golden <- c(
+  TC_inf = 0.616240601533736,
+  TC_sup = 3.11988412244955
+)
+native_cluster_regression_golden <- c(
+  n_reps = 20L,
+  n_misreps = 3L,
+  share_failures = 0.15
+)
+
+native_lqte_regression_golden <- data.frame(
   quantile = seq(0.05, 0.95, by = 0.05),
   estimate = c(
     -1.42410977726763, -1.16020396591842, -0.155955670531315,
@@ -43,8 +55,6 @@ stata_lqte_golden <- data.frame(
     0.973322738624446
   )
 )
-
-stata_partial_golden <- c(TC_inf = 0.61624060000000, TC_sup = 3.11988410000000)
 test_that("Rfuzzydid matches frozen Stata parity goldens on core estimates and counts", {
   df <- make_parity_fixture()
 
@@ -76,7 +86,7 @@ test_that("Rfuzzydid matches frozen Stata parity goldens on core estimates and c
   expect_equal(as.integer(r_fit$n00), stata_cell_counts[["n00"]])
 })
 
-test_that("Rfuzzydid matches frozen parity goldens on lqte point estimates", {
+test_that("native lqte regression remains stable on the parity fixture", {
   df <- make_parity_fixture()
 
   fit <- fuzzydid(
@@ -90,8 +100,10 @@ test_that("Rfuzzydid matches frozen parity goldens on lqte point estimates", {
     seed = 1
   )
 
-  expect_equal(fit$lqte$quantile, stata_lqte_golden$quantile, tolerance = 1e-12)
-  expect_equal(fit$lqte$estimate, stata_lqte_golden$estimate, tolerance = 1e-6)
+  # The current native LQTE implementation does not match upstream Stata's
+  # `fuzzydid`; track it as an R regression until that gap is resolved.
+  expect_equal(fit$lqte$quantile, native_lqte_regression_golden$quantile, tolerance = 1e-12)
+  expect_equal(fit$lqte$estimate, native_lqte_regression_golden$estimate, tolerance = 1e-6)
 })
 
 test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
@@ -117,7 +129,7 @@ test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
   )
 })
 
-test_that("clustered bootstrap diagnostics satisfy parity invariants", {
+test_that("clustered bootstrap diagnostics stay stable under fixed bootstrap semantics", {
   df <- make_parity_fixture()
 
   fit <- fuzzydid(
@@ -134,13 +146,13 @@ test_that("clustered bootstrap diagnostics satisfy parity invariants", {
     seed = 1
   )
 
-  expect_equal(as.integer(fit$n_reps), 20L)
-  expect_true(as.integer(fit$n_misreps) >= 0L)
-  expect_true(as.integer(fit$n_misreps) <= as.integer(fit$n_reps))
+  # Stata's command does not expose these diagnostics directly, so keep them as
+  # a deterministic native regression target instead of a live Stata parity
+  # assertion.
+  expect_equal(as.integer(fit$n_reps), native_cluster_regression_golden[["n_reps"]])
+  expect_equal(as.integer(fit$n_misreps), native_cluster_regression_golden[["n_misreps"]])
   expect_equal(
     as.numeric(fit$share_failures),
-    as.numeric(fit$n_misreps) / as.numeric(fit$n_reps),
-    tolerance = 1e-12
+    native_cluster_regression_golden[["share_failures"]]
   )
-  expect_true(as.integer(fit$n_misreps) > 0L)
 })

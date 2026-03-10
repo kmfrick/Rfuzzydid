@@ -1,5 +1,7 @@
 # Rfuzzydid: Fuzzy Difference-in-Differences
 
+[![R-CMD-check](https://github.com/kmfrick/Rfuzzydid/actions/workflows/r.yml/badge.svg)](https://github.com/kmfrick/Rfuzzydid/actions/workflows/r.yml)
+
 ## Title
 
 **fuzzydid** — Estimation with Fuzzy Difference-in-Difference Designs
@@ -43,11 +45,11 @@ fuzzydid(
 - `data`: Data frame containing all variables.
 - `formula`: A formula of the form `y ~ d` or `y ~ d + x1 + x2`, where `y` is the outcome variable and RHS terms include treatment plus optional covariates.
 - `treatment`: Optional treatment variable name for multi-term formulas. If omitted, treatment is inferred when unambiguous (single RHS term, or a unique `d` term).
-- `group`: Name of the group variable (backward group for multi-period designs). See Section 4.2 of [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019) for details on constructing this variable.
+- `group`: Name of the group variable (backward group for multi-period designs). See Section 4.2 of de Chaisemartin et al. (2018b; doi:10.1177/1536867X19854019) for details on constructing this variable.
 - `time`: Name of the time period variable.
 - `group_forward`: Optional name of the forward group variable for multi-period designs.
 
-A detailed introduction to the methodology is given in [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019).
+A detailed introduction to the methodology is given in de Chaisemartin et al. (2018b; doi:10.1177/1536867X19854019).
 
 ## Options
 
@@ -62,7 +64,7 @@ At least one of `did`, `tc`, `cic`, or `lqte` must be specified. If several are 
 
 **Treatment categorization:**
 
-- `newcateg`: Numeric vector of upper bounds to group treatment values together for Wald-TC and Wald-CIC. Useful when treatment takes many values. See Section 3.3 of [de Chaisemartin et al. (2018b)](https://doi.org/10.1177/1536867X19854019).
+- `newcateg`: Numeric vector of upper bounds to group treatment values together for Wald-TC and Wald-CIC. Useful when treatment takes many values. See Section 3.3 of de Chaisemartin et al. (2018b; doi:10.1177/1536867X19854019).
 
 **Numerators and bounds:**
 
@@ -165,13 +167,19 @@ import delimited "fuzzydid_example.csv", clear
 fuzzydid y g t d, did tc cic breps(50)
 ```
 
-**Note:** Point estimates from R and Stata will be identical, but bootstrap confidence intervals will differ due to RNG differences between the two platforms. Results remain comparable across implementations.
+**Note:** The Stata command is shown for parity/reference only. `Rfuzzydid`
+does not bundle the Stata `fuzzydid` sources, so Stata users need that command
+installed separately in their Stata environment.
+
+Point estimates from R and Stata will be identical for the covered parity
+fixtures, but bootstrap confidence intervals can differ due to RNG differences
+between the two platforms. Results remain comparable across implementations.
 
 ## References
 
-- de Chaisemartin, C. and D'Haultfoeuille, X. 2018a. [Fuzzy Differences-in-Differences](https://doi.org/10.1093/restud/rdx049). *Review of Economic Studies*, 85(2): 999-1028.
+- de Chaisemartin, C. and D'Haultfoeuille, X. 2018a. *Fuzzy Differences-in-Differences*. *Review of Economic Studies*, 85(2): 999-1028. doi:10.1093/restud/rdx049.
 
-- de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. 2018b. [Fuzzy Differences-in-Differences with Stata](https://doi.org/10.1177/1536867X19854019). *Stata Journal*.
+- de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. 2018b. *Fuzzy Differences-in-Differences with Stata*. *Stata Journal*. doi:10.1177/1536867X19854019.
 
 
 ## License

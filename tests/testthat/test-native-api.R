@@ -67,6 +67,33 @@ test_that("formula API works on native backend", {
   expect_true(!is.null(fit$matrices$b_LATE))
 })
 
+test_that("summary, tidy, and glance methods expose stable outputs", {
+  df <- make_native_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_identical(summary(fit), fit)
+
+  tidy_out <- generics::tidy(fit)
+  expect_s3_class(tidy_out, "data.frame")
+  expect_true(all(c("component", "term", "estimate") %in% names(tidy_out)))
+  expect_true(all(tidy_out$component %in% c("late", "eqtest", "lqte")))
+
+  glance_out <- generics::glance(fit)
+  expect_s3_class(glance_out, "data.frame")
+  expect_equal(nrow(glance_out), 1L)
+  expect_true(all(c("backend", "Num.Obs.", "N.reps") %in% names(glance_out)))
+})
+
 test_that("treatment is explicit and robust to RHS ordering", {
   df <- make_covariate_fixture()
 

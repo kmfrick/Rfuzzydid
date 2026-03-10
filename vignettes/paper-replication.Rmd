@@ -26,7 +26,7 @@ de Chaisemartin and D'Haultfoeuille (2018).
 
 The dataset is the bundled `inpresdata.dta` file in `inst/extdata`. The file
 originates from David Roodman's replication materials
-([droodman/Duflo2001](https://github.com/droodman/Duflo2001/blob/main/inpresdata.dta)).
+([droodman/Duflo-2001](https://github.com/droodman/Duflo-2001)).
 In the companion archive README
 ([droodman/Duflo-2001](https://github.com/droodman/Duflo-2001)), he notes that
 the main 1995 SUPAS file is "not contained in this repository" and links to
@@ -239,6 +239,9 @@ cat(sprintf("CIC = %.6f\n", cic_agg))
 The following one-shot Stata code starts from `inpresdata.dta` and reproduces
 the arm-level and aggregate point estimates:
 
+The Stata snippet assumes the Stata `fuzzydid` command is already installed
+locally; `Rfuzzydid` no longer ships the `.ado` sources.
+
 ```stata
 clear all
 set more off
@@ -379,6 +382,6 @@ software.
 
 Duflo, E. (2001). Schooling and Labor Market Consequences of School Construction in Indonesia. *American Economic Review*, 91(4): 795-813.
 
-de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://doi.org/10.1093/restud/rdx049). *Review of Economic Studies*, 85(2): 999-1028.
+de Chaisemartin, C. and D'Haultfoeuille, X. (2018). *Fuzzy Differences-in-Differences*. *Review of Economic Studies*, 85(2): 999-1028. doi:10.1093/restud/rdx049.
 
-de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. (2018). [Fuzzy Differences-in-Differences with Stata](https://doi.org/10.1177/1536867X19854019). *Stata Journal*.
+de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. (2018). *Fuzzy Differences-in-Differences with Stata*. *Stata Journal*. doi:10.1177/1536867X19854019.

@@ -58,17 +58,17 @@ stata_eqtest <- data.frame(
 stata_lqte <- data.frame(
   quantile = seq(0.05, 0.95, by = 0.05),
   estimate = c(
-    -1.42410977726763, -1.16020396591842, -0.155955670531315,
-    1.16671849288358, 1.69883708320675, 1.46646296054033,
-    1.53079877262529, 1.67443332467136, 1.88539747538913,
-    0.697452557886513, 1.06766117780084, 1.63197830474743,
-    2.08945772994696, 2.42192910221658, 2.77891151846807,
-    2.92337346861517, 2.50163057321635, 1.60868067363183,
-    0.973322738624446
+    1.67274034023285, 1.79422724246979, 1.81602716445923,
+    1.94611406326294, 1.95544064044952, 1.94727826118469,
+    1.97404694557190, 2.09413313865662, 2.13104295730591,
+    2.03220224380493, 2.10763168334961, -0.360978126525879,
+    -0.325689792633057, -0.228986263275146, -0.172835350036621,
+    -0.146114349365234, -0.098971366882324, -0.079638004302979,
+    -0.034532070159912
   )
 )
 
-stata_cluster <- c(n_reps = 20L, n_misreps = 3L, share_failures = 0.15)
+native_cluster <- c(n_reps = 20L, n_misreps = 3L, share_failures = 0.15)
 ```
 
 # Introduction
@@ -76,6 +76,9 @@ stata_cluster <- c(n_reps = 20L, n_misreps = 3L, share_failures = 0.15)
 This vignette is a parity check between `Rfuzzydid` and Stata's `fuzzydid`.
 Each section runs an R example and, where possible, compares against frozen
 Stata outputs used in the test suite.
+
+The Stata snippets assume the Stata `fuzzydid` command is already installed
+locally; `Rfuzzydid` no longer bundles the `.ado` sources.
 
 The shared estimators come from de Chaisemartin and D'Haultfoeuille (2018):
 local average treatment effects (LATE) and local quantile treatment effects
@@ -185,13 +188,10 @@ modelsummary::modelsummary(fit)
 Equivalent Stata code:
 
 ```stata
-* Tidy-like access in Stata comes from stored matrices/scalars in e()
+* Tidy-like access in Stata comes from stored matrices in e()
 matrix list e(b_LATE)
 matrix list e(se_LATE)
 matrix list e(ci_LATE)
-display e(N_reps)
-display e(N_misreps)
-display e(share_failures)
 ```
 
 ## Core Stata Parity Check
@@ -551,6 +551,9 @@ lqte_cmp <- data.frame(
 knitr::kable(head(lqte_cmp, 10), digits = 8)
 ```
 
+Unlike the core LATE estimands, the current native LQTE path does not yet
+numerically match the upstream Stata command on this fixture.
+
 LQTE requires binary `G`, `T`, and `D`, with no covariates.
 
 Equivalent Stata code:
@@ -634,13 +637,17 @@ fit_diag <- fuzzydid(
 diag_cmp <- data.frame(
   metric = c("N.reps", "N.misreps", "Share.failures"),
   R = c(fit_diag$n_reps, fit_diag$n_misreps, fit_diag$share_failures),
-  Stata = c(stata_cluster[["n_reps"]], stata_cluster[["n_misreps"]], stata_cluster[["share_failures"]])
+  Reference = c(
+    native_cluster[["n_reps"]],
+    native_cluster[["n_misreps"]],
+    native_cluster[["share_failures"]]
+  )
 )
 
 share_from_counts <- if (diag_cmp$R[1] > 0) diag_cmp$R[2] / diag_cmp$R[1] else NA_real_
 
-# Stochastic bootstrap diagnostics can vary across implementations/R versions.
-diag_cmp$Delta <- diag_cmp$R - diag_cmp$Stata
+# These diagnostics are deterministic in R because bootstrap seeding is fixed.
+diag_cmp$Delta <- diag_cmp$R - diag_cmp$Reference
 knitr::kable(diag_cmp, digits = 8)
 
 if (requireNamespace("haven", quietly = TRUE)) {
@@ -648,16 +655,17 @@ if (requireNamespace("haven", quietly = TRUE)) {
 }
 ```
 
-Equivalent Stata code:
+Stata can run the same clustered bootstrap command:
 
 ```stata
 use "stata-parity-cluster-fixture.dta", clear
 fuzzydid y g t d, did tc cic cluster(cl) breps(20)
-display e(N_reps)
-display e(N_misreps)
-display e(share_failures)
 ```
+
+The Stata command does not expose `N_misreps` or `share_failures` directly, so
+the table above is tracked as a deterministic native regression check rather
+than a stored-scalar parity assertion.
 
 # References
 
-de Chaisemartin, C. and D'Haultfoeuille, X. (2018). [Fuzzy Differences-in-Differences](https://doi.org/10.1093/restud/rdx049). *Review of Economic Studies*, 85(2): 999-1028.
+de Chaisemartin, C. and D'Haultfoeuille, X. (2018). *Fuzzy Differences-in-Differences*. *Review of Economic Studies*, 85(2): 999-1028. doi:10.1093/restud/rdx049.

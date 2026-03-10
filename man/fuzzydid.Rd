@@ -83,9 +83,40 @@ fixed Stata-parity seed (`1`) when `nose = FALSE`.}
 If `NULL`, treatment is inferred from formula RHS when unambiguous.}
 }
 \value{
-An object of class `fuzzydid`.
+An object of class `fuzzydid` containing estimator tables, optional
+  bootstrap diagnostics, and Stata-parity matrices.
 }
 \description{
 Formula-first interface for fuzzy difference-in-differences estimators.
 Estimation is fully native in R.
+}
+\examples{
+make_example_cell <- function(g, t, ones, n_cell = 20L) {
+  data.frame(
+    g = rep.int(g, n_cell),
+    t = rep.int(t, n_cell),
+    d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+  )
+}
+
+df <- rbind(
+  make_example_cell(0L, 0L, 4L),
+  make_example_cell(0L, 1L, 8L),
+  make_example_cell(1L, 0L, 6L),
+  make_example_cell(1L, 1L, 16L)
+)
+df$id <- seq_len(nrow(df))
+df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+
+fit <- fuzzydid(
+  data = df[, c("y", "g", "t", "d")],
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  nose = TRUE
+)
+
+fit$late
 }

@@ -11,6 +11,40 @@
 
 \item{...}{Unused.}
 }
+\value{
+A data frame with one row per available estimate and standardized
+  columns such as `component`, `term`, `estimate`, and confidence interval
+  bounds.
+}
 \description{
 Tidy extractor for `fuzzydid` objects.
+}
+\examples{
+make_example_cell <- function(g, t, ones, n_cell = 20L) {
+  data.frame(
+    g = rep.int(g, n_cell),
+    t = rep.int(t, n_cell),
+    d = c(rep.int(1L, ones), rep.int(0L, n_cell - ones))
+  )
+}
+
+df <- rbind(
+  make_example_cell(0L, 0L, 4L),
+  make_example_cell(0L, 1L, 8L),
+  make_example_cell(1L, 0L, 6L),
+  make_example_cell(1L, 1L, 16L)
+)
+df$id <- seq_len(nrow(df))
+df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+
+fit <- fuzzydid(
+  data = df[, c("y", "g", "t", "d")],
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  nose = TRUE
+)
+
+generics::tidy(fit)
 }
