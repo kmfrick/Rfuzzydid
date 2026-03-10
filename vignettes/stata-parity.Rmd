@@ -281,27 +281,27 @@ matrix list e(ci_LATE)
 The next sections cover behavior that should match Stata and often causes
 confusion in practice.
 
-### 1. Fixed Bootstrap Seed
+### 1. User-Controlled Bootstrap Seed
 
-Both implementations force a fixed seed (`1`) for bootstrap inference when
-standard errors are requested:
+Bootstrap inference is reproducible when you pass the same `seed` value. If
+you change `seed`, the resamples change too:
 
 ```{r seed-parity}
-# These produce identical SE/CI despite different user-specified seeds
+# These produce identical SE/CI because the same bootstrap seed is supplied
 fit1 <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, breps = 50, seed = 1)
-fit2 <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, breps = 50, seed = 999)
+fit2 <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, breps = 50, seed = 1)
 
 all.equal(fit1$late$std.error, fit2$late$std.error)
 
 stata_seed_se <- 0.66310988000000
 seed_cmp <- data.frame(
   estimator = "W_DID",
-  R_seed_1 = fit1$late$std.error[fit1$late$estimator == "W_DID"],
-  R_seed_999 = fit2$late$std.error[fit2$late$estimator == "W_DID"],
+  R_seed_1_run_1 = fit1$late$std.error[fit1$late$estimator == "W_DID"],
+  R_seed_1_run_2 = fit2$late$std.error[fit2$late$estimator == "W_DID"],
   Stata = stata_seed_se
 )
-seed_cmp$abs_diff_R1_vs_Stata <- abs(seed_cmp$R_seed_1 - seed_cmp$Stata)
-seed_cmp$abs_diff_R999_vs_Stata <- abs(seed_cmp$R_seed_999 - seed_cmp$Stata)
+seed_cmp$abs_diff_run_1_vs_Stata <- abs(seed_cmp$R_seed_1_run_1 - seed_cmp$Stata)
+seed_cmp$abs_diff_run_2_vs_Stata <- abs(seed_cmp$R_seed_1_run_2 - seed_cmp$Stata)
 knitr::kable(seed_cmp, digits = 8)
 ```
 
@@ -313,7 +313,7 @@ set seed 1
 fuzzydid y g t d, did breps(50)
 matrix se1 = e(se_LATE)
 
-set seed 999
+set seed 1
 fuzzydid y g t d, did breps(50)
 matrix se2 = e(se_LATE)
 
@@ -646,7 +646,7 @@ diag_cmp <- data.frame(
 
 share_from_counts <- if (diag_cmp$R[1] > 0) diag_cmp$R[2] / diag_cmp$R[1] else NA_real_
 
-# These diagnostics are deterministic in R because bootstrap seeding is fixed.
+# These diagnostics are deterministic in R when the same bootstrap seed is used.
 diag_cmp$Delta <- diag_cmp$R - diag_cmp$Reference
 knitr::kable(diag_cmp, digits = 8)
 

@@ -129,7 +129,7 @@ test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
   )
 })
 
-test_that("clustered bootstrap diagnostics stay stable under fixed bootstrap semantics", {
+test_that("clustered bootstrap diagnostics stay stable under a fixed user seed", {
   df <- make_parity_fixture()
 
   fit <- fuzzydid(

@@ -12,9 +12,14 @@
 \item{...}{Unused.}
 }
 \value{
-A data frame with one row per available estimate and standardized
-  columns such as `component`, `term`, `estimate`, and confidence interval
-  bounds.
+A data frame with class \code{"data.frame"} and one row per
+  available estimate or contrast. \code{component} identifies whether the
+  row comes from the LATE table, equality-test table, or LQTE table.
+  \code{model} and \code{term} label the estimator or contrast.
+  \code{estimate} is the point estimate, while \code{std.error},
+  \code{conf.low}, and \code{conf.high} contain bootstrap uncertainty
+  summaries when available and \code{NA} otherwise. If no estimates are
+  available, an empty data frame with the same columns is returned.
 }
 \description{
 Tidy extractor for `fuzzydid` objects.

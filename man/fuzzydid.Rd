@@ -26,7 +26,7 @@ fuzzydid(
   sieveorder = NULL,
   tagobs = FALSE,
   backend = c("auto", "native", "stata"),
-  seed = 1,
+  seed = NULL,
   treatment = NULL
 )
 }
@@ -76,15 +76,31 @@ as `(outcome_order, treatment_order)`.}
 \item{backend}{One of `"auto"` or `"native"`. `"stata"` is no longer
 supported and errors.}
 
-\item{seed}{Preserved for API compatibility. Bootstrap inference uses a
-fixed Stata-parity seed (`1`) when `nose = FALSE`.}
+\item{seed}{Optional integer seed used for bootstrap resampling when
+\code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the
+current RNG state. Supply a value to make bootstrap standard errors,
+confidence intervals, and diagnostics reproducible.}
 
 \item{treatment}{Optional treatment variable name for multi-term formulas.
 If `NULL`, treatment is inferred from formula RHS when unambiguous.}
 }
 \value{
-An object of class `fuzzydid` containing estimator tables, optional
-  bootstrap diagnostics, and Stata-parity matrices.
+An object of class \code{"fuzzydid"}. This is a list whose
+  \code{late} component is a data frame of requested LATE-type estimators
+  with columns \code{estimator}, \code{estimate}, \code{std.error},
+  \code{conf.low}, and \code{conf.high}. \code{eqtest} is either
+  \code{NULL} or an analogous data frame of pairwise equality contrasts,
+  and \code{lqte} is either \code{NULL} or a data frame with columns
+  \code{quantile}, \code{estimate}, \code{std.error}, \code{conf.low}, and
+  \code{conf.high} for local quantile treatment effects. Additional
+  components include \code{matrices}, a named list of Stata-style result
+  matrices; \code{tagobs}, an optional logical mask of retained
+  observations; sample-size diagnostics \code{n}, \code{n11}, \code{n10},
+  \code{n01}, and \code{n00}; bootstrap diagnostics \code{n_reps},
+  \code{n_misreps}, and \code{share_failures}; and metadata such as
+  \code{backend}, \code{call}, and \code{options}. The estimate tables
+  report point estimates and, unless \code{nose = TRUE}, bootstrap
+  standard errors and percentile confidence limits.
 }
 \description{
 Formula-first interface for fuzzy difference-in-differences estimators.

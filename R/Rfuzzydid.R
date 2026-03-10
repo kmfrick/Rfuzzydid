@@ -31,10 +31,26 @@
 #' @param tagobs Logical; return logical mask of observations used.
 #' @param backend One of `"auto"` or `"native"`. `"stata"` is no longer
 #'   supported and errors.
-#' @param seed Preserved for API compatibility. Bootstrap inference uses a
-#'   fixed Stata-parity seed (`1`) when `nose = FALSE`.
-#' @return An object of class `fuzzydid` containing estimator tables, optional
-#'   bootstrap diagnostics, and Stata-parity matrices.
+#' @param seed Optional integer seed used for bootstrap resampling when
+#'   \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the
+#'   current RNG state. Supply a value to make bootstrap standard errors,
+#'   confidence intervals, and diagnostics reproducible.
+#' @return An object of class \code{"fuzzydid"}. This is a list whose
+#'   \code{late} component is a data frame of requested LATE-type estimators
+#'   with columns \code{estimator}, \code{estimate}, \code{std.error},
+#'   \code{conf.low}, and \code{conf.high}. \code{eqtest} is either
+#'   \code{NULL} or an analogous data frame of pairwise equality contrasts,
+#'   and \code{lqte} is either \code{NULL} or a data frame with columns
+#'   \code{quantile}, \code{estimate}, \code{std.error}, \code{conf.low}, and
+#'   \code{conf.high} for local quantile treatment effects. Additional
+#'   components include \code{matrices}, a named list of Stata-style result
+#'   matrices; \code{tagobs}, an optional logical mask of retained
+#'   observations; sample-size diagnostics \code{n}, \code{n11}, \code{n10},
+#'   \code{n01}, and \code{n00}; bootstrap diagnostics \code{n_reps},
+#'   \code{n_misreps}, and \code{share_failures}; and metadata such as
+#'   \code{backend}, \code{call}, and \code{options}. The estimate tables
+#'   report point estimates and, unless \code{nose = TRUE}, bootstrap
+#'   standard errors and percentile confidence limits.
 #' @examples
 #' make_example_cell <- function(g, t, ones, n_cell = 20L) {
 #'   data.frame(
@@ -87,7 +103,7 @@ fuzzydid <- function(
   sieveorder = NULL,
   tagobs = FALSE,
   backend = c("auto", "native", "stata"),
-  seed = 1,
+  seed = NULL,
   treatment = NULL
 ) {
   if (!is.data.frame(data)) {
@@ -233,6 +249,19 @@ fuzzydid <- function(
   if (!is.null(opts$cluster)) {
     if (!is.character(opts$cluster) || length(opts$cluster) != 1L) {
       stop("`cluster` must be a single variable name.", call. = FALSE)
+    }
+  }
+
+  if (!is.null(opts$seed)) {
+    seed <- opts$seed
+    is_integer_like <- is.numeric(seed) &&
+      length(seed) == 1L &&
+      !is.na(seed) &&
+      is.finite(seed) &&
+      (seed == as.integer(seed)) &&
+      seed >= 0
+    if (!is_integer_like) {
+      stop("`seed` must be NULL or a non-negative integer scalar.", call. = FALSE)
     }
   }
 
@@ -1404,12 +1433,27 @@ fuzzydid <- function(
 .bootstrap_native <- function(df, prepared, opts, point) {
   boot_sentinel <- 1000000000000000
   if (opts$nose) return(NULL)
-  # Stata parity: lock bootstrap RNG semantics to avoid cross-version drift.
+  # Lock bootstrap RNG semantics to avoid cross-version drift.
   old_rng <- RNGkind()
-  on.exit(do.call(RNGkind, as.list(old_rng)), add = TRUE)
+  restore_seed <- !is.null(opts$seed)
+  old_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  if (restore_seed && old_seed_exists) {
+    old_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  }
+  on.exit({
+    do.call(RNGkind, as.list(old_rng))
+    if (restore_seed) {
+      if (old_seed_exists) {
+        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+        rm(".Random.seed", envir = .GlobalEnv)
+      }
+    }
+  }, add = TRUE)
   RNGversion("4.3.0")
-  # Bootstrap always runs with seed(1), independent of user seed.
-  set.seed(1L)
+  if (restore_seed) {
+    set.seed(as.integer(opts$seed))
+  }
 
   late_names <- names(point$late)
   lqte_names <- names(point$lqte)
@@ -1675,7 +1719,10 @@ fuzzydid <- function(
 #' @description Print a compact summary table for fuzzydid results.
 #' @param object A fuzzydid object.
 #' @param ... Unused.
-#' @return `object`, invisibly, after printing the available estimator tables.
+#' @return The input \code{object}, returned invisibly with class
+#'   \code{"fuzzydid"}, after printing the available estimator tables. This
+#'   method is called for its side effect of displaying the \code{late},
+#'   \code{eqtest}, and \code{lqte} components in a compact tabular form.
 #' @examples
 #' make_example_cell <- function(g, t, ones, n_cell = 20L) {
 #'   data.frame(
@@ -1734,9 +1781,14 @@ summary.fuzzydid <- function(object, ...) {
 #' @description Tidy extractor for `fuzzydid` objects.
 #' @param x A fuzzydid object.
 #' @param ... Unused.
-#' @return A data frame with one row per available estimate and standardized
-#'   columns such as `component`, `term`, `estimate`, and confidence interval
-#'   bounds.
+#' @return A data frame with class \code{"data.frame"} and one row per
+#'   available estimate or contrast. \code{component} identifies whether the
+#'   row comes from the LATE table, equality-test table, or LQTE table.
+#'   \code{model} and \code{term} label the estimator or contrast.
+#'   \code{estimate} is the point estimate, while \code{std.error},
+#'   \code{conf.low}, and \code{conf.high} contain bootstrap uncertainty
+#'   summaries when available and \code{NA} otherwise. If no estimates are
+#'   available, an empty data frame with the same columns is returned.
 #' @examples
 #' make_example_cell <- function(g, t, ones, n_cell = 20L) {
 #'   data.frame(
@@ -1832,8 +1884,13 @@ tidy.fuzzydid <- function(x, ...) {
 #' @description One-row summary for `fuzzydid` objects.
 #' @param x A fuzzydid object.
 #' @param ... Unused.
-#' @return A one-row data frame containing observation counts, backend
-#'   information, and bootstrap replication diagnostics.
+#' @return A one-row data frame with class \code{"data.frame"} summarizing the
+#'   fitted object. \code{backend} reports the computation path and
+#'   \code{Num.Obs.} reports the estimation sample size. \code{N.11},
+#'   \code{N.10}, \code{N.01}, and \code{N.00} give the four design cell
+#'   counts. \code{N.reps}, \code{N.misreps}, and \code{Share.failures}
+#'   describe bootstrap replication totals and failure rates, or are
+#'   \code{NA} when \code{nose = TRUE}.
 #' @examples
 #' make_example_cell <- function(g, t, ones, n_cell = 20L) {
 #'   data.frame(

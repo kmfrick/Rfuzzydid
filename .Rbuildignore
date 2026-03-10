@@ -9,3 +9,5 @@
 ^Vagrantfile$
 ^vignettes/.*\.html$
 ^vignettes/stata_parity_capture.*\.log$
+^CONTRIBUTING\.md$
+^parity\.log$

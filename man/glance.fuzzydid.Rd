@@ -12,8 +12,13 @@
 \item{...}{Unused.}
 }
 \value{
-A one-row data frame containing observation counts, backend
-  information, and bootstrap replication diagnostics.
+A one-row data frame with class \code{"data.frame"} summarizing the
+  fitted object. \code{backend} reports the computation path and
+  \code{Num.Obs.} reports the estimation sample size. \code{N.11},
+  \code{N.10}, \code{N.01}, and \code{N.00} give the four design cell
+  counts. \code{N.reps}, \code{N.misreps}, and \code{Share.failures}
+  describe bootstrap replication totals and failure rates, or are
+  \code{NA} when \code{nose = TRUE}.
 }
 \description{
 One-row summary for `fuzzydid` objects.

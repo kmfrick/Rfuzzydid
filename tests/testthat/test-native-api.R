@@ -81,7 +81,8 @@ test_that("summary, tidy, and glance methods expose stable outputs", {
     backend = "native"
   )
 
-  expect_identical(summary(fit), fit)
+  invisible(capture.output(out <- summary(fit)))
+  expect_identical(out, fit)
 
   tidy_out <- generics::tidy(fit)
   expect_s3_class(tidy_out, "data.frame")
