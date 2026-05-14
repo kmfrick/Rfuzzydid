@@ -1,10 +1,20 @@
 # Rfuzzydid: Fuzzy Difference-in-Differences
 
 [![R-CMD-check](https://github.com/kmfrick/Rfuzzydid/actions/workflows/r.yml/badge.svg)](https://github.com/kmfrick/Rfuzzydid/actions/workflows/r.yml)
+[![Codecov test coverage](https://codecov.io/gh/kmfrick/Rfuzzydid/graph/badge.svg)](https://app.codecov.io/gh/kmfrick/Rfuzzydid)
 
 ## Title
 
 **fuzzydid** — Estimation with Fuzzy Difference-in-Difference Designs
+
+## Installation
+
+Install the development version from GitHub with:
+
+```r
+install.packages("remotes")
+remotes::install_github("kmfrick/Rfuzzydid")
+```
 
 ## Syntax
 
