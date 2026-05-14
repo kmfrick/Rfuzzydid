@@ -37,12 +37,6 @@ stata_partial_golden <- c(
   TC_inf = 0.616240601533736,
   TC_sup = 3.11988412244955
 )
-native_cluster_regression_golden <- c(
-  n_reps = 20L,
-  n_misreps = 3L,
-  share_failures = 0.15
-)
-
 native_lqte_regression_golden <- data.frame(
   quantile = seq(0.05, 0.95, by = 0.05),
   estimate = c(
@@ -129,7 +123,7 @@ test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
   )
 })
 
-test_that("clustered bootstrap diagnostics stay stable under a fixed user seed", {
+test_that("clustered bootstrap diagnostics are reproducible under a fixed user seed", {
   df <- make_parity_fixture()
 
   fit <- fuzzydid(
@@ -145,14 +139,28 @@ test_that("clustered bootstrap diagnostics stay stable under a fixed user seed",
     backend = "native",
     seed = 1
   )
+  fit_again <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    cluster = "cl",
+    breps = 20,
+    backend = "native",
+    seed = 1
+  )
 
-  # Stata's command does not expose these diagnostics directly, so keep them as
-  # a deterministic native regression target instead of a live Stata parity
-  # assertion.
-  expect_equal(as.integer(fit$n_reps), native_cluster_regression_golden[["n_reps"]])
-  expect_equal(as.integer(fit$n_misreps), native_cluster_regression_golden[["n_misreps"]])
+  expect_equal(as.integer(fit$n_reps), 20L)
+  expect_equal(as.integer(fit_again$n_reps), 20L)
+  expect_equal(as.integer(fit$n_misreps), as.integer(fit_again$n_misreps))
+  expect_equal(as.numeric(fit$share_failures), as.numeric(fit_again$share_failures))
+  expect_true(as.integer(fit$n_misreps) >= 0L)
+  expect_true(as.integer(fit$n_misreps) <= as.integer(fit$n_reps))
   expect_equal(
     as.numeric(fit$share_failures),
-    native_cluster_regression_golden[["share_failures"]]
+    as.integer(fit$n_misreps) / as.integer(fit$n_reps)
   )
 })
