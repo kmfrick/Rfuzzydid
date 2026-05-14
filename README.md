@@ -89,7 +89,7 @@ When covariates are included and neither `modelx` nor `sieves` is specified, all
 **Other:**
 
 - `tagobs`: Logical; return a logical mask of observations used by `fuzzydid()`.
-- `backend`: One of `"auto"` or `"native"`. The `"stata"` backend is no longer supported.
+- `backend`: One of `"auto"` or `"native"`.
 - `seed`: Preserved for API compatibility. Bootstrap uses a fixed Stata-parity seed (1) when `nose = FALSE`.
 
 ## Returned Values

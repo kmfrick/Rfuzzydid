@@ -29,8 +29,7 @@
 #'   A length-2 vector is accepted for backward compatibility and interpreted
 #'   as `(outcome_order, treatment_order)`.
 #' @param tagobs Logical; return logical mask of observations used.
-#' @param backend One of `"auto"` or `"native"`. `"stata"` is no longer
-#'   supported and errors.
+#' @param backend One of `"auto"` or `"native"`.
 #' @param seed Optional integer seed used for bootstrap resampling when
 #'   \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the
 #'   current RNG state. Supply a value to make bootstrap standard errors,
@@ -102,7 +101,7 @@ fuzzydid <- function(
   sieves = FALSE,
   sieveorder = NULL,
   tagobs = FALSE,
-  backend = c("auto", "native", "stata"),
+  backend = c("auto", "native"),
   seed = NULL,
   treatment = NULL
 ) {
@@ -149,13 +148,12 @@ fuzzydid <- function(
     cluster = cluster
   )
 
-  selected_backend <- .choose_backend(backend = backend)
   out <- .run_native_backend(
     prepared = prepared,
     opts = opts
   )
 
-  out$backend <- selected_backend
+  out$backend <- "native"
   out$formula <- formula
   out$group <- group
   out$time <- time
@@ -395,16 +393,6 @@ fuzzydid <- function(
     group_forward = group_forward,
     cluster = cluster
   )
-}
-
-.choose_backend <- function(backend) {
-  if (backend == "stata") {
-    stop(
-      "`backend = \"stata\"` is no longer supported. Use `backend = \"native\"`.",
-      call. = FALSE
-    )
-  }
-  "native"
 }
 
 .to_column_matrix <- function(values, rownames_vec) {

@@ -25,7 +25,7 @@ fuzzydid(
   sieves = FALSE,
   sieveorder = NULL,
   tagobs = FALSE,
-  backend = c("auto", "native", "stata"),
+  backend = c("auto", "native"),
   seed = NULL,
   treatment = NULL
 )
@@ -73,8 +73,7 @@ as `(outcome_order, treatment_order)`.}
 
 \item{tagobs}{Logical; return logical mask of observations used.}
 
-\item{backend}{One of `"auto"` or `"native"`. `"stata"` is no longer
-supported and errors.}
+\item{backend}{One of `"auto"` or `"native"`.}
 
 \item{seed}{Optional integer seed used for bootstrap resampling when
 \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the

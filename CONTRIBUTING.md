@@ -11,10 +11,16 @@
 ## Stata Parity Goldens
 
 - Regular tests do not require Stata.
-- To refresh the frozen Stata parity constants, run
-  `Rscript tools/generate-stata-parity-goldens.R`.
-- The helper assumes the `stata` CLI and the Stata `fuzzydid` command are
-  already installed locally.
+- Frozen Stata parity constants live directly in
+  `tests/testthat/test-stata-parity.R`.
+- If those constants need to be recovered, run Stata locally with the same
+  fixture construction as the test and paste the resulting values into the
+  hardcoded constants. Do not add committed Stata execution code to the test
+  suite.
+- The Stata commands used to recover the currently asserted values are:
+  `fuzzydid y g t d, did tc cic nose` for `stata_core_golden`, then
+  `matrix list e(b_LATE)`; and `fuzzydid y g t d, tc partial nose` for
+  `stata_partial_golden`, then `matrix list e(b_LATE)`.
 
 ## Pull Requests
 

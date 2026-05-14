@@ -400,20 +400,3 @@ test_that("tagobs mask is returned without mutating input data", {
   expect_equal(length(fit$tagobs), nrow(df))
   expect_false("tagobs" %in% names(df))
 })
-
-test_that("stata backend option is rejected explicitly", {
-  df <- make_native_fixture()
-
-  expect_error(
-    fuzzydid(
-      data = df,
-      formula = y ~ d,
-      group = "g",
-      time = "t",
-      did = TRUE,
-      nose = TRUE,
-      backend = "stata"
-    ),
-    "no longer supported"
-  )
-})

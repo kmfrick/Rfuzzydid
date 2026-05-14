@@ -23,8 +23,8 @@ make_parity_fixture <- function() {
   df[, c("y", "g", "t", "d", "cl")]
 }
 
-# Generated once from local Stata via tools/generate-stata-parity-goldens.R and
-# intentionally hardcoded so the test suite does not require Stata at runtime.
+# Recovered once from local Stata and intentionally hardcoded so the test suite
+# does not require Stata at runtime.
 stata_core_golden <- c(
   did = 2.17430877504668,
   tc = 2.18553887285118,
