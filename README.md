@@ -1,6 +1,7 @@
 # Rfuzzydid: Fuzzy Difference-in-Differences
 
 [![R-CMD-check](https://github.com/kmfrick/Rfuzzydid/actions/workflows/r.yml/badge.svg)](https://github.com/kmfrick/Rfuzzydid/actions/workflows/r.yml)
+[![pkgcheck](https://github.com/kmfrick/Rfuzzydid/workflows/pkgcheck/badge.svg)](https://github.com/kmfrick/Rfuzzydid/actions?query=workflow%3Apkgcheck)
 [![Codecov test coverage](https://codecov.io/gh/kmfrick/Rfuzzydid/graph/badge.svg)](https://app.codecov.io/gh/kmfrick/Rfuzzydid)
 
 ## Title

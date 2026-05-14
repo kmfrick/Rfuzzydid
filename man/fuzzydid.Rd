@@ -31,7 +31,7 @@ fuzzydid(
 )
 }
 \arguments{
-\item{data}{Data frame.}
+\item{data}{A \code{data.frame}.}
 
 \item{formula}{Formula of the form `y ~ d + covariates`.}
 
@@ -42,7 +42,13 @@ fuzzydid(
 \item{group_forward}{Optional name of the forward group variable for
 multi-period designs.}
 
-\item{did, tc, cic, lqte}{Logical flags indicating estimators to compute.}
+\item{did}{Logical; compute the Wald-DID estimator.}
+
+\item{tc}{Logical; compute the Wald-TC estimator.}
+
+\item{cic}{Logical; compute the Wald-CIC estimator.}
+
+\item{lqte}{Logical; compute local quantile treatment effects.}
 
 \item{newcateg}{Optional numeric vector of upper bounds used to recategorize
 treatment values for TC/CIC.}
@@ -122,14 +128,17 @@ df <- rbind(
 )
 df$id <- seq_len(nrow(df))
 df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+example_data <- df
 
 fit <- fuzzydid(
-  data = df[, c("y", "g", "t", "d")],
+  data = example_data,
   formula = y ~ d,
   group = "g",
   time = "t",
   did = TRUE,
   tc = TRUE,
+  cic = TRUE,
+  lqte = TRUE,
   nose = TRUE
 )
 

@@ -1,0 +1,12 @@
+url: https://kmfrick.github.io/Rfuzzydid/
+template:
+  bootstrap: 5
+reference:
+- title: Main interface
+  contents:
+  - fuzzydid
+- title: Tidying methods
+  contents:
+  - tidy.fuzzydid
+  - glance.fuzzydid
+  - summary.fuzzydid

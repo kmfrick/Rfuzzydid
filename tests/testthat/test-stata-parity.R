@@ -74,10 +74,10 @@ test_that("Rfuzzydid matches frozen Stata parity goldens on core estimates and c
   )
 
   expect_equal(r_estimates, stata_core_golden, tolerance = 1e-6)
-  expect_equal(as.integer(r_fit$n11), stata_cell_counts[["n11"]])
-  expect_equal(as.integer(r_fit$n10), stata_cell_counts[["n10"]])
-  expect_equal(as.integer(r_fit$n01), stata_cell_counts[["n01"]])
-  expect_equal(as.integer(r_fit$n00), stata_cell_counts[["n00"]])
+  expect_identical(as.integer(r_fit$n11), stata_cell_counts[["n11"]])
+  expect_identical(as.integer(r_fit$n10), stata_cell_counts[["n10"]])
+  expect_identical(as.integer(r_fit$n01), stata_cell_counts[["n01"]])
+  expect_identical(as.integer(r_fit$n00), stata_cell_counts[["n00"]])
 })
 
 test_that("native lqte regression remains stable on the parity fixture", {
@@ -153,13 +153,13 @@ test_that("clustered bootstrap diagnostics are reproducible under a fixed user s
     seed = 1
   )
 
-  expect_equal(as.integer(fit$n_reps), 20L)
-  expect_equal(as.integer(fit_again$n_reps), 20L)
-  expect_equal(as.integer(fit$n_misreps), as.integer(fit_again$n_misreps))
-  expect_equal(as.numeric(fit$share_failures), as.numeric(fit_again$share_failures))
-  expect_true(as.integer(fit$n_misreps) >= 0L)
-  expect_true(as.integer(fit$n_misreps) <= as.integer(fit$n_reps))
-  expect_equal(
+  expect_identical(as.integer(fit$n_reps), 20L)
+  expect_identical(as.integer(fit_again$n_reps), 20L)
+  expect_identical(as.integer(fit$n_misreps), as.integer(fit_again$n_misreps))
+  expect_identical(as.numeric(fit$share_failures), as.numeric(fit_again$share_failures))
+  expect_gte(as.integer(fit$n_misreps), 0L)
+  expect_lte(as.integer(fit$n_misreps), as.integer(fit$n_reps))
+  expect_identical(
     as.numeric(fit$share_failures),
     as.integer(fit$n_misreps) / as.integer(fit$n_reps)
   )

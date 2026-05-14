@@ -62,9 +62,9 @@ test_that("formula API works on native backend", {
   )
 
   expect_s3_class(fit, "fuzzydid")
-  expect_equal(sort(fit$late$estimator), sort(c("W_DID", "W_TC", "W_CIC")))
+  expect_identical(sort(fit$late$estimator), sort(c("W_DID", "W_TC", "W_CIC")))
   expect_true("estimate" %in% names(fit$late))
-  expect_true(!is.null(fit$matrices$b_LATE))
+  expect_false(is.null(fit$matrices$b_LATE))
 })
 
 test_that("summary, tidy, and glance methods expose stable outputs", {
@@ -91,7 +91,7 @@ test_that("summary, tidy, and glance methods expose stable outputs", {
 
   glance_out <- generics::glance(fit)
   expect_s3_class(glance_out, "data.frame")
-  expect_equal(nrow(glance_out), 1L)
+  expect_identical(nrow(glance_out), 1L)
   expect_true(all(c("backend", "Num.Obs.", "N.reps") %in% names(glance_out)))
 })
 
@@ -148,7 +148,8 @@ test_that("bootstrap summary drops Stata sentinel reps", {
     byrow = TRUE
   )
 
-  out <- Rfuzzydid:::.calc_boot_summary(reps)
+  calc_boot_summary <- getFromNamespace(".calc_boot_summary", "Rfuzzydid")
+  out <- calc_boot_summary(reps)
   expect_equal(out$se, c(stats::sd(c(1, 3)), stats::sd(c(2, 4))), tolerance = 1e-12)
 })
 
@@ -183,8 +184,8 @@ test_that("native backend supports lqte under binary two-period design", {
     backend = "native"
   )
 
-  expect_true(!is.null(fit$lqte))
-  expect_equal(nrow(fit$lqte), 19L)
+  expect_false(is.null(fit$lqte))
+  expect_identical(nrow(fit$lqte), 19L)
 })
 
 test_that("partial returns TC bounds under valid design", {
@@ -201,7 +202,7 @@ test_that("partial returns TC bounds under valid design", {
     backend = "native"
   )
 
-  expect_equal(fit$late$estimator, c("TC_inf", "TC_sup"))
+  expect_identical(fit$late$estimator, c("TC_inf", "TC_sup"))
 })
 
 test_that("covariates with modelx and sieves are supported for DID/TC", {
@@ -263,8 +264,8 @@ test_that("sieveorder defaults to deterministic CV selection and supports legacy
     backend = "native"
   )
 
-  expect_true(!is.null(fit_cv_1$sieveorder_selected))
-  expect_equal(as.integer(fit_cv_1$sieveorder_selected), as.integer(fit_cv_2$sieveorder_selected))
+  expect_false(is.null(fit_cv_1$sieveorder_selected))
+  expect_identical(as.integer(fit_cv_1$sieveorder_selected), as.integer(fit_cv_2$sieveorder_selected))
   expect_true(all(as.integer(fit_cv_1$sieveorder_selected) >= 2L))
 
   expect_warning(
@@ -359,6 +360,38 @@ test_that("strict restrictions mirror Stata-style constraints", {
     ),
     "integer scalar >= 2"
   )
+
+  expect_error(
+    fuzzydid(
+      data = make_native_fixture(),
+      formula = y ~ d,
+      group = "g",
+      time = "t",
+      did = 1,
+      nose = TRUE,
+      backend = "native"
+    ),
+    "`did` must be TRUE or FALSE",
+    fixed = TRUE
+  )
+})
+
+test_that("explicit breps is ignored when standard errors are skipped", {
+  df <- make_native_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    breps = 2L,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_s3_class(fit, "fuzzydid")
+  expect_true(is.na(fit$late$std.error))
 })
 
 test_that("group_forward value check message includes -3", {
@@ -396,7 +429,7 @@ test_that("tagobs mask is returned without mutating input data", {
     backend = "native"
   )
 
-  expect_true(is.logical(fit$tagobs))
-  expect_equal(length(fit$tagobs), nrow(df))
+  expect_type(fit$tagobs, "logical")
+  expect_length(fit$tagobs, nrow(df))
   expect_false("tagobs" %in% names(df))
 })

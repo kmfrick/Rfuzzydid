@@ -2,7 +2,7 @@
 #' @description
 #' Formula-first interface for fuzzy difference-in-differences estimators.
 #' Estimation is fully native in R.
-#' @param data Data frame.
+#' @param data A \code{data.frame}.
 #' @param formula Formula of the form `y ~ d + covariates`.
 #' @param treatment Optional treatment variable name for multi-term formulas.
 #'   If `NULL`, treatment is inferred from formula RHS when unambiguous.
@@ -10,7 +10,10 @@
 #' @param time Name of the time variable.
 #' @param group_forward Optional name of the forward group variable for
 #'   multi-period designs.
-#' @param did,tc,cic,lqte Logical flags indicating estimators to compute.
+#' @param did Logical; compute the Wald-DID estimator.
+#' @param tc Logical; compute the Wald-TC estimator.
+#' @param cic Logical; compute the Wald-CIC estimator.
+#' @param lqte Logical; compute local quantile treatment effects.
 #' @param newcateg Optional numeric vector of upper bounds used to recategorize
 #'   treatment values for TC/CIC.
 #' @param numerator Logical; return estimator numerators for DID/TC/CIC.
@@ -67,14 +70,17 @@
 #' )
 #' df$id <- seq_len(nrow(df))
 #' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$id / 7)
+#' example_data <- df
 #'
 #' fit <- fuzzydid(
-#'   data = df[, c("y", "g", "t", "d")],
+#'   data = example_data,
 #'   formula = y ~ d,
 #'   group = "g",
 #'   time = "t",
 #'   did = TRUE,
 #'   tc = TRUE,
+#'   cic = TRUE,
+#'   lqte = TRUE,
 #'   nose = TRUE
 #' )
 #'
@@ -114,28 +120,48 @@ fuzzydid <- function(
   }
 
   backend <- match.arg(backend)
-  breps_missing <- missing(breps)
+  logical_opts <- list(
+    did = did,
+    tc = tc,
+    cic = cic,
+    lqte = lqte,
+    numerator = numerator,
+    partial = partial,
+    nose = nose,
+    eqtest = eqtest,
+    sieves = sieves,
+    tagobs = tagobs
+  )
+  valid_logical <- vapply(
+    logical_opts,
+    function(x) is.logical(x) && length(x) == 1L && !is.na(x),
+    logical(1)
+  )
+  if (!all(valid_logical)) {
+    bad <- names(valid_logical)[!valid_logical][[1L]]
+    stop(sprintf("`%s` must be TRUE or FALSE.", bad), call. = FALSE)
+  }
 
   opts <- list(
-    did = isTRUE(did),
-    tc = isTRUE(tc),
-    cic = isTRUE(cic),
-    lqte = isTRUE(lqte),
+    did = did,
+    tc = tc,
+    cic = cic,
+    lqte = lqte,
     newcateg = newcateg,
-    numerator = isTRUE(numerator),
-    partial = isTRUE(partial),
-    nose = isTRUE(nose),
+    numerator = numerator,
+    partial = partial,
+    nose = nose,
     cluster = cluster,
     breps = breps,
-    eqtest = isTRUE(eqtest),
+    eqtest = eqtest,
     modelx = modelx,
-    sieves = isTRUE(sieves),
+    sieves = sieves,
     sieveorder = sieveorder,
-    tagobs = isTRUE(tagobs),
+    tagobs = tagobs,
     seed = seed
   )
 
-  .validate_common_options(opts, breps_missing = breps_missing)
+  .validate_common_options(opts)
   parsed <- .parse_fuzzy_formula(formula, data, treatment = treatment)
   prepared <- .prepare_input_data(
     data = data,
@@ -164,16 +190,12 @@ fuzzydid <- function(
   out
 }
 
-.validate_common_options <- function(opts, breps_missing) {
+.validate_common_options <- function(opts) {
   if (!opts$did && !opts$tc && !opts$cic && !opts$lqte) {
     stop(
       "At least one estimator must be requested: did, tc, cic, or lqte.",
       call. = FALSE
     )
-  }
-
-  if (opts$nose && !breps_missing) {
-    stop("`nose = TRUE` cannot be used with explicit `breps`.", call. = FALSE)
   }
 
   if (opts$nose && !is.null(opts$cluster)) {
@@ -222,7 +244,7 @@ fuzzydid <- function(
     if (!is.numeric(opts$sieveorder) || !(length(opts$sieveorder) %in% c(1L, 2L))) {
       stop("`sieveorder` must be numeric with length 1 or 2.", call. = FALSE)
     }
-    if (any(!is.finite(opts$sieveorder))) {
+    if (!all(is.finite(opts$sieveorder))) {
       stop("`sieveorder` values must be finite.", call. = FALSE)
     }
     if (any(opts$sieveorder < 2)) {
@@ -317,7 +339,7 @@ fuzzydid <- function(
   missing_vars <- setdiff(needed, names(data))
   if (length(missing_vars) > 0L) {
     stop(
-      sprintf("Variables not found in `data`: %s", paste(missing_vars, collapse = ", ")),
+      sprintf("Variables not found in `data`: %s", toString(missing_vars)),
       call. = FALSE
     )
   }
@@ -356,7 +378,7 @@ fuzzydid <- function(
   missing_vars <- setdiff(role_vars, names(data))
   if (length(missing_vars) > 0L) {
     stop(
-      sprintf("Required variable(s) not found in `data`: %s", paste(missing_vars, collapse = ", ")),
+      sprintf("Required variable(s) not found in `data`: %s", toString(missing_vars)),
       call. = FALSE
     )
   }
@@ -472,7 +494,7 @@ fuzzydid <- function(
         call. = FALSE
       )
     }
-    if (sum(df[[group]] == 0, na.rm = TRUE) == 0L) {
+    if (!any(df[[group]] == 0, na.rm = TRUE)) {
       stop("The group variable must take value 0 for some observations.", call. = FALSE)
     }
     return(invisible(NULL))
@@ -483,7 +505,7 @@ fuzzydid <- function(
     if (any(bad)) {
       stop(sprintf("The group variable `%s` takes values outside {-3,-1,0,1,NA}.", nm), call. = FALSE)
     }
-    if (sum(df[[nm]] == 0, na.rm = TRUE) == 0L) {
+    if (!any(df[[nm]] == 0, na.rm = TRUE)) {
       stop("The group variables must take value 0 for some observations.", call. = FALSE)
     }
   }
@@ -790,7 +812,7 @@ fuzzydid <- function(
     function(ord) .cv_score_sieve_order(df = df, y = y, d = d, cov_types = cov_types, order = ord),
     numeric(1)
   )
-  if (all(!is.finite(scores))) {
+  if (!any(is.finite(scores))) {
     stop("Unable to choose sieve order by CV due to non-finite fold losses.", call. = FALSE)
   }
 
@@ -1183,7 +1205,11 @@ fuzzydid <- function(
           method = methods$y
         )
 
-        if (any(!is.finite(p_pred)) || any(!is.finite(y01_pred)) || any(!is.finite(y00_pred))) {
+        if (
+          !all(is.finite(p_pred)) ||
+          !all(is.finite(y01_pred)) ||
+          !all(is.finite(y00_pred))
+        ) {
           valid <- FALSE
           break
         }
@@ -1483,12 +1509,12 @@ fuzzydid <- function(
 
     if (!invalid_rep && !is.null(reps_late)) {
       late_vals <- as.numeric(est_b$late[late_names])
-      invalid_rep <- length(late_vals) != length(late_names) || any(!is.finite(late_vals))
+      invalid_rep <- length(late_vals) != length(late_names) || !all(is.finite(late_vals))
     }
 
     if (!invalid_rep && !is.null(reps_lqte)) {
       lqte_vals <- as.numeric(est_b$lqte[lqte_names])
-      invalid_rep <- length(lqte_vals) != length(lqte_names) || any(!is.finite(lqte_vals))
+      invalid_rep <- length(lqte_vals) != length(lqte_names) || !all(is.finite(lqte_vals))
     }
 
     if (invalid_rep) {

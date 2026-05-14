@@ -298,7 +298,8 @@ seed_cmp <- data.frame(
   estimator = "W_DID",
   R_seed_1_run_1 = fit1$late$std.error[fit1$late$estimator == "W_DID"],
   R_seed_1_run_2 = fit2$late$std.error[fit2$late$estimator == "W_DID"],
-  Stata = stata_seed_se
+  Stata = stata_seed_se,
+  stringsAsFactors = FALSE
 )
 seed_cmp$abs_diff_run_1_vs_Stata <- abs(seed_cmp$R_seed_1_run_1 - seed_cmp$Stata)
 seed_cmp$abs_diff_run_2_vs_Stata <- abs(seed_cmp$R_seed_1_run_2 - seed_cmp$Stata)
@@ -641,7 +642,8 @@ diag_cmp <- data.frame(
     native_cluster[["n_reps"]],
     native_cluster[["n_misreps"]],
     native_cluster[["share_failures"]]
-  )
+  ),
+  stringsAsFactors = FALSE
 )
 
 share_from_counts <- if (diag_cmp$R[1] > 0) diag_cmp$R[2] / diag_cmp$R[1] else NA_real_
