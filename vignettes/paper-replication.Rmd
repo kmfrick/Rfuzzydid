@@ -11,7 +11,7 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = TRUE
+  eval = requireNamespace("foreign", quietly = TRUE)
 )
 ```
 
@@ -38,7 +38,6 @@ that downloadable location.
 
 ```{r load-data}
 library(Rfuzzydid)
-library(foreign)
 
 # Resolve package root when rendering inside source tree
 find_local_pkg_dir <- function() {
@@ -79,7 +78,7 @@ if (identical(data_path, "")) {
     stop("Bundled dataset 'inpresdata.dta' was not found in installed package or source-tree extdata.")
   }
 }
-raw <- read.dta(data_path)
+raw <- foreign::read.dta(data_path)
 ```
 
 ## Constructing the Analysis Sample

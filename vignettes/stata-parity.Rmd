@@ -179,7 +179,7 @@ matrix list e(ci_LATE)
 
 `modelsummary` gives a compact table that is easy to pass into reports:
 
-```{r tidy-output}
+```{r tidy-output, eval = requireNamespace("modelsummary", quietly = TRUE)}
 library(modelsummary)
 
 modelsummary::modelsummary(fit)
