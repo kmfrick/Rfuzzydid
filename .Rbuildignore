@@ -11,3 +11,4 @@
 ^vignettes/stata_parity_capture.*\.log$
 ^CONTRIBUTING\.md$
 ^parity\.log$
+^_pkgdown\.yml$
