@@ -1,23 +1,91 @@
 name: pkgcheck
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_run:
+    workflows: ["R-CMD-check"]
+    types: [completed]
     branches:
       - main
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   pkgcheck:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: true
+      ROPENSCI: true
     steps:
-      - uses: ropensci-review-tools/pkgcheck-action@main
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y universal-ctags
+
+      - name: Install R dependencies
+        shell: Rscript {0}
+        run: |
+          options(repos = c(
+            ropenscireviewtools = "https://ropensci-review-tools.r-universe.dev",
+            CRAN = "https://cloud.r-project.org"
+          ))
+          install.packages("pak")
+          pak::pak(c("local::.", "pkgcheck", "visNetwork"), dependencies = TRUE)
+
+      - name: Run pkgcheck
+        shell: Rscript {0}
+        run: |
+          options(repos = c(
+            ropenscireviewtools = "https://ropensci-review-tools.r-universe.dev",
+            CRAN = "https://cloud.r-project.org"
+          ))
+
+          checks <- pkgcheck::pkgcheck(".", use_cache = FALSE)
+          md <- pkgcheck::checks_to_markdown(checks, render = FALSE)
+          writeLines(md, "pkgcheck.md")
+
+          summary_end <- grep("^---$", md)[1]
+          summary_lines <- md[seq_len(summary_end - 1)]
+          step_summary <- Sys.getenv("GITHUB_STEP_SUMMARY")
+          if (nzchar(step_summary)) {
+            writeLines(summary_lines, step_summary)
+          }
+
+          network_file <- attr(md, "network_file")
+          if (length(network_file) == 1L && file.exists(network_file)) {
+            file.copy(network_file, "pkgcheck-network.html", overwrite = TRUE)
+          }
+
+          print(summary(checks))
+          if (!isTRUE(attr(md, "checks_okay"))) {
+            quit(status = 1, save = "no")
+          }
+
+      - name: Upload pkgcheck artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkgcheck-results
+          path: |
+            pkgcheck.md
+            pkgcheck-network.html
+          if-no-files-found: ignore
