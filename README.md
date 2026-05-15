@@ -17,6 +17,9 @@ install.packages("remotes")
 remotes::install_github("kmfrick/Rfuzzydid")
 ```
 
+Full documentation and worked examples are available at
+<https://kmfrick.github.io/Rfuzzydid/>.
+
 ## Syntax
 
 ```r

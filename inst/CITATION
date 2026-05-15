@@ -6,3 +6,34 @@ bibentry(
   note = "R package version 1.1.0",
   url = "https://github.com/kmfrick/Rfuzzydid"
 )
+
+bibentry(
+  bibtype = "Article",
+  title = "Fuzzy Differences-in-Differences",
+  author = c(
+    person("Clement", "de Chaisemartin"),
+    person("Xavier", "D'Haultfoeuille")
+  ),
+  journal = "Review of Economic Studies",
+  year = "2018",
+  volume = "85",
+  number = "2",
+  pages = "999--1028",
+  doi = "10.1093/restud/rdx049"
+)
+
+bibentry(
+  bibtype = "Article",
+  title = "Fuzzy Differences-in-Differences with Stata",
+  author = c(
+    person("Clement", "de Chaisemartin"),
+    person("Xavier", "D'Haultfoeuille"),
+    person("Yannick", "Guyonvarch")
+  ),
+  journal = "Stata Journal",
+  year = "2019",
+  volume = "19",
+  number = "2",
+  pages = "435--458",
+  doi = "10.1177/1536867X19854019"
+)

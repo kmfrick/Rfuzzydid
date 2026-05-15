@@ -1,0 +1,253 @@
+---
+title: "Fuzzy difference-in-differences with Rfuzzydid"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Fuzzy difference-in-differences with Rfuzzydid}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Purpose
+
+This article is a practical guide to the estimators implemented in
+`Rfuzzydid`. It follows de Chaisemartin and D'Haultfoeuille (2018) and the
+Stata companion by de Chaisemartin, D'Haultfoeuille, and Guyonvarch (2019).
+Those papers are the primary references for the formal identification results;
+this vignette keeps the focus on what to run and how to read the output.
+
+A fuzzy DID design has the same comparison structure as a standard DID design,
+but the treatment group does not necessarily move from untreated to fully
+treated. Instead, the treatment rate increases more in one group than in the
+comparison group. The first stage is the DID in treatment:
+
+\[
+\Delta_D =
+E[D\mid G=1,T=1] - E[D\mid G=1,T=0]
+- E[D\mid G=0,T=1] + E[D\mid G=0,T=0].
+\]
+
+The estimators in `Rfuzzydid` scale outcome changes by this first stage. In the
+binary-treatment, two-group, two-period case, the target is a local average
+treatment effect for switchers: units whose treatment status changes because
+their group-period cell receives the stronger treatment-intensity change.
+
+# Choosing an estimator
+
+`fuzzydid()` exposes the main estimators from the papers through logical
+options. You can request more than one estimator in the same call.
+
+| Option | Estimator | Use when |
+|---|---|---|
+| `did = TRUE` | Wald-DID | You want the familiar DID Wald ratio as a benchmark, and the stronger treatment-effect stability restrictions are credible. |
+| `tc = TRUE` | Wald-TC | You want an alternative LATE estimator that uses common-trend restrictions within baseline-treatment subgroups and does not require stable treatment effects. |
+| `cic = TRUE` | Wald-CIC | You want the fuzzy extension of changes-in-changes, using distributional restrictions rather than a mean-only common-trends restriction. |
+| `lqte = TRUE` | LQTE | You want local quantile treatment effects; this uses the same style of restrictions as Wald-CIC. |
+
+The Wald-DID ratio is easy to interpret, but the papers show that it needs
+extra restrictions on treatment effects to identify the LATE in fuzzy designs.
+Wald-TC and Wald-CIC are useful alternatives when those restrictions are not
+plausible. They rely on different identifying assumptions, so disagreement
+between estimators is substantively informative rather than just a numerical
+detail.
+
+The Stata companion recommends using equality tests and placebo-style numerator
+checks when the design allows them. In `Rfuzzydid`, use `eqtest = TRUE` when at
+least two LATE estimators are requested. Use `numerator = TRUE` for reduced-form
+placebo checks in periods where the treatment first stage should be zero.
+
+# Basic R workflow
+
+The formula is `outcome ~ treatment + covariates`. The `group` and `time`
+arguments name the group and period variables.
+
+```{r basic-workflow}
+library(Rfuzzydid)
+
+make_cell <- function(g, t, n, p_d) {
+  d <- rbinom(n, size = 1, prob = p_d)
+  y <- 1 + 0.4 * g + 0.3 * t + 1.5 * d + rnorm(n, sd = 0.2)
+  data.frame(y = y, d = d, g = g, t = t)
+}
+
+set.seed(4)
+df <- rbind(
+  make_cell(g = 0, t = 0, n = 80, p_d = 0.20),
+  make_cell(g = 0, t = 1, n = 80, p_d = 0.30),
+  make_cell(g = 1, t = 0, n = 80, p_d = 0.25),
+  make_cell(g = 1, t = 1, n = 80, p_d = 0.70)
+)
+
+fit <- fuzzydid(
+  data = df,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  eqtest = TRUE,
+  breps = 50,
+  seed = 1
+)
+
+summary(fit)
+```
+
+The `late` component contains point estimates, bootstrap standard errors, and
+percentile bootstrap confidence intervals. The `matrices` component mirrors the
+matrix-style results returned by the Stata command.
+
+```{r extract-results}
+fit$late
+fit$eqtest
+```
+
+# Reading the main options
+
+## Treatment categories
+
+For ordered or multi-valued treatments, `newcateg` groups treatment values into
+ordered bins before estimating Wald-TC or Wald-CIC:
+
+```{r newcateg-example, eval = FALSE}
+fuzzydid(
+  data = df,
+  formula = wage ~ schooling,
+  group = "g",
+  time = "t",
+  tc = TRUE,
+  cic = TRUE,
+  newcateg = c(5, 8, 11, 14, 1000)
+)
+```
+
+This follows the Stata article's treatment of applications where the treatment
+has many support points.
+
+## Partial identification
+
+When the comparison group does not have a stable treatment rate, the Wald-TC
+point estimand may be unavailable. The papers derive bounds for that setting,
+and `partial = TRUE` requests the corresponding TC bounds:
+
+```{r partial-example, eval = FALSE}
+fuzzydid(
+  data = df,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  tc = TRUE,
+  partial = TRUE,
+  breps = 50,
+  seed = 1
+)
+```
+
+## Covariates
+
+When the identifying restrictions are more credible after conditioning on
+covariates, include those variables on the right-hand side of the formula.
+`modelx` controls the parametric first-step models used for Wald-DID and
+Wald-TC. With binary treatment, supply two entries: one for outcome conditional
+expectations and one for treatment conditional expectations.
+
+```{r covariate-example, eval = FALSE}
+fuzzydid(
+  data = df,
+  formula = y ~ d + x1 + x2,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  modelx = c("ols", "logit")
+)
+```
+
+For continuous controls, `sieves = TRUE` requests nonparametric sieve
+adjustment. If `sieveorder = NULL`, `Rfuzzydid` selects the order by deterministic
+five-fold cross-validation.
+
+## Inference
+
+By default, `fuzzydid()` computes bootstrap standard errors and confidence
+intervals. Use `breps` to set the number of replications and `seed` for
+reproducibility. Use `cluster` for one-way clustered bootstrap inference.
+
+`nose = TRUE` skips bootstrap inference and returns point estimates only. This
+is useful while checking data construction, but final empirical results should
+usually report uncertainty.
+
+# Translating from Stata
+
+The core Stata command
+
+```stata
+fuzzydid y g t d, did tc cic breps(50)
+```
+
+maps to:
+
+```{r stata-map, eval = FALSE}
+fuzzydid(
+  data = df,
+  formula = y ~ d,
+  group = "g",
+  time = "t",
+  did = TRUE,
+  tc = TRUE,
+  cic = TRUE,
+  breps = 50
+)
+```
+
+For multiple periods, the Stata command uses a forward group variable. In
+`Rfuzzydid`, pass the backward group through `group` and the forward group
+through `group_forward`:
+
+```{r group-forward-example, eval = FALSE}
+fuzzydid(
+  data = panel_df,
+  formula = y ~ d,
+  group = "G_t",
+  group_forward = "G_tplus1",
+  time = "t",
+  did = TRUE,
+  tc = TRUE
+)
+```
+
+See `vignette("stata-parity", package = "Rfuzzydid")` for direct R/Stata parity
+examples, and `vignette("paper-replication", package = "Rfuzzydid")` for an
+INPRES replication exercise.
+
+# Practical checklist
+
+Before treating an estimate as a causal effect, check the design:
+
+- The treatment first stage should be in the expected direction and clearly
+  away from zero.
+- The group and time variables should encode the comparison used by the
+  identifying argument, not merely convenient labels in the raw data.
+- If the control group's treatment rate is stable, Wald-TC and Wald-CIC are
+  natural alternatives to Wald-DID.
+- If several estimators are reported, large disagreements should be interpreted
+  as evidence that at least one identifying restriction may be inappropriate.
+- If pre-treatment periods exist, reduced-form numerator checks can be used as
+  placebo tests.
+
+# References
+
+de Chaisemartin, C. and D'Haultfoeuille, X. (2018). *Fuzzy
+Differences-in-Differences*. *Review of Economic Studies*, 85(2): 999-1028.
+doi:10.1093/restud/rdx049.
+
+de Chaisemartin, C., D'Haultfoeuille, X., and Guyonvarch, Y. (2019). *Fuzzy
+Differences-in-Differences with Stata*. *Stata Journal*, 19(2): 435-458.
+doi:10.1177/1536867X19854019.

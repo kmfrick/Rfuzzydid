@@ -19,5 +19,6 @@ Suggests: broom, foreign, haven, modelsummary, pkgload, rmarkdown,
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3
-URL: https://github.com/kmfrick/Rfuzzydid
+URL: https://kmfrick.github.io/Rfuzzydid/,
+    https://github.com/kmfrick/Rfuzzydid
 BugReports: https://github.com/kmfrick/Rfuzzydid/issues

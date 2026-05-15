@@ -1,6 +1,16 @@
 url: https://kmfrick.github.io/Rfuzzydid/
 template:
   bootstrap: 5
+home:
+  title: Rfuzzydid
+  description: R estimators for fuzzy difference-in-differences designs.
+articles:
+- title: Guides
+  navbar: ~
+  contents:
+  - fuzzydid-methods
+  - stata-parity
+  - paper-replication
 reference:
 - title: Main interface
   contents:
