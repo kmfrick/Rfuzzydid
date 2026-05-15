@@ -44,9 +44,10 @@ jobs:
       - name: Install R dependencies
         shell: Rscript {0}
         run: |
+          cran <- Sys.getenv("RSPM", unset = "https://cloud.r-project.org")
           options(repos = c(
             ropenscireviewtools = "https://ropensci-review-tools.r-universe.dev",
-            CRAN = "https://cloud.r-project.org"
+            CRAN = cran
           ))
           install.packages("pak")
           pak::pak(c("local::.", "pkgcheck", "visNetwork"), dependencies = TRUE)
@@ -54,9 +55,10 @@ jobs:
       - name: Run pkgcheck
         shell: Rscript {0}
         run: |
+          cran <- Sys.getenv("RSPM", unset = "https://cloud.r-project.org")
           options(repos = c(
             ropenscireviewtools = "https://ropensci-review-tools.r-universe.dev",
-            CRAN = "https://cloud.r-project.org"
+            CRAN = cran
           ))
 
           checks <- pkgcheck::pkgcheck(".", use_cache = FALSE)
