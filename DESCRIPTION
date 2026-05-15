@@ -10,7 +10,7 @@ Authors@R:
            email = "kmfrick@proton.me")
 Author: Kevin Michael Frick [aut, cre]
 Maintainer: Kevin Michael Frick <kmfrick@proton.me>
-License: GPL (>= 2)
+License: AGPL-3
 Depends: R (>= 3.6.0)
 Encoding: UTF-8
 Imports: generics, knitr

@@ -45,7 +45,7 @@ fuzzydid(
   sieveorder = NULL,
   tagobs = FALSE,
   backend = c("auto", "native"),
-  seed = 1,
+  seed = NULL,
   treatment = NULL
 )
 ```
@@ -53,6 +53,10 @@ fuzzydid(
 ## Description
 
 `fuzzydid()` computes estimators of local average and quantile treatment effects in fuzzy DID designs, following de Chaisemartin and D'Haultfoeuille (2018a). It also computes their standard errors and confidence intervals.
+
+`Rfuzzydid` is an R port of the Stata `fuzzydid` package. Its development aim
+is feature parity with the Stata package while exposing the estimators through
+a formula-first R interface.
 
 **Arguments:**
 
@@ -104,7 +108,9 @@ When covariates are included and neither `modelx` nor `sieves` is specified, all
 
 - `tagobs`: Logical; return a logical mask of observations used by `fuzzydid()`.
 - `backend`: One of `"auto"` or `"native"`.
-- `seed`: Preserved for API compatibility. Bootstrap uses a fixed Stata-parity seed (1) when `nose = FALSE`.
+- `seed`: Optional integer seed for bootstrap resampling when `nose = FALSE`.
+  The default `NULL` uses the current R RNG state; supply a seed for
+  reproducible standard errors, confidence intervals, and bootstrap diagnostics.
 
 ## Returned Values
 
