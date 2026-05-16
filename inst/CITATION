@@ -3,7 +3,7 @@ bibentry(
   title = "Rfuzzydid: Fuzzy Difference in Differences",
   author = person("Kevin Michael", "Frick"),
   year = "2026",
-  note = "R package version 1.1.0",
+  note = "R package version 1.1.1",
   url = "https://github.com/kmfrick/Rfuzzydid"
 )
 
