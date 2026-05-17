@@ -205,6 +205,65 @@ test_that("partial returns TC bounds under valid design", {
   expect_identical(fit$late$estimator, c("TC_inf", "TC_sup"))
 })
 
+test_that("eqtest supports point contrasts when standard errors are skipped", {
+  df <- make_native_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    eqtest = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_s3_class(fit$eqtest, "data.frame")
+  expect_identical(
+    fit$eqtest$contrast,
+    c("W_DID_W_TC", "W_DID_W_CIC", "W_TC_W_CIC")
+  )
+  expect_true(all(is.na(fit$eqtest$std.error)))
+})
+
+test_that("sieves is a no-op without formula covariates", {
+  df <- make_native_fixture()
+
+  fit_plain <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    lqte = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  fit_sieves <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    lqte = TRUE,
+    sieves = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_equal(fit_sieves$late$estimate, fit_plain$late$estimate)
+  expect_equal(fit_sieves$lqte$estimate, fit_plain$lqte$estimate)
+  expect_null(fit_sieves$sieveorder_selected)
+})
+
 test_that("covariates with modelx and sieves are supported for DID/TC", {
   df <- make_covariate_fixture()
 

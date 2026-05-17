@@ -202,8 +202,8 @@ fuzzydid <- function(
     stop("`nose = TRUE` cannot be used with `cluster`.", call. = FALSE)
   }
 
-  if (opts$eqtest && (opts$numerator || opts$nose)) {
-    stop("`eqtest` cannot be used with `numerator` or `nose`.", call. = FALSE)
+  if (opts$eqtest && opts$numerator) {
+    stop("`eqtest` cannot be used with `numerator`.", call. = FALSE)
   }
 
   if (opts$partial) {
@@ -545,11 +545,7 @@ fuzzydid <- function(
     stop("`modelx` requires covariates in the formula.", call. = FALSE)
   }
 
-  if (opts$sieves && !has_cov) {
-    stop("`sieves` requires covariates in the formula.", call. = FALSE)
-  }
-
-  if (opts$sieves && !has_cont) {
+  if (opts$sieves && has_cov && !has_cont) {
     stop("sieves requires continuous covariates.", call. = FALSE)
   }
 

@@ -12,3 +12,7 @@
 ^CONTRIBUTING\.md$
 ^parity\.log$
 ^_pkgdown\.yml$
+^\.Rprofile$
+^rproject\.toml$
+^rv\.lock$
+^rv$
