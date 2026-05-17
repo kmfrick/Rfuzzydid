@@ -75,12 +75,19 @@
 #' fit <- fuzzydid(
 #'   data = example_data,
 #'   formula = y ~ d,
+#'   treatment = NULL,
 #'   group = "g",
 #'   time = "t",
+#'   group_forward = NULL,
 #'   did = TRUE,
 #'   tc = TRUE,
 #'   cic = TRUE,
 #'   lqte = TRUE,
+#'   newcateg = c(0, 1),
+#'   cluster = NULL,
+#'   modelx = NULL,
+#'   sieveorder = NULL,
+#'   seed = NULL,
 #'   nose = TRUE
 #' )
 #'
