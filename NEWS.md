@@ -1,3 +1,10 @@
+# Rfuzzydid 1.1.2
+
+- Added SRR standards documentation and related package-review metadata.
+- Improved the `plot()` method and examples for stable non-interactive checks.
+- Expanded native API tests for type handling and extractor behavior.
+- Refactored internal `fuzzydid()` helpers without changing the user-facing API.
+
 # Rfuzzydid 1.1.1
 
 - Fixed CRAN no-Suggests checks by making vignette rendering work when
