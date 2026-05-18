@@ -15,6 +15,13 @@ reference:
 - title: Main interface
   contents:
   - fuzzydid
+  - coef.fuzzydid
+  - confint.fuzzydid
+  - formula.fuzzydid
+  - nobs.fuzzydid
+  - plot.fuzzydid
+  - print.fuzzydid
+  - vcov.fuzzydid
 - title: Tidying methods
   contents:
   - tidy.fuzzydid

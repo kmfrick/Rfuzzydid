@@ -15,7 +15,8 @@
 The input \code{x}, returned invisibly.
 }
 \description{
-Plot fuzzydid point estimates and stored confidence intervals.
+Plot fuzzydid point estimates and stored confidence intervals
+as a base R dot-and-whisker plot.
 }
 \examples{
 df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)

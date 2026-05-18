@@ -2144,7 +2144,8 @@ vcov.fuzzydid <- function(object, ...) {
 }
 
 #' @title plot.fuzzydid
-#' @description Plot fuzzydid point estimates and stored confidence intervals.
+#' @description Plot fuzzydid point estimates and stored confidence intervals
+#'   as a base R dot-and-whisker plot.
 #' @param x A fuzzydid object.
 #' @param ... Unused.
 #' @return The input \code{x}, returned invisibly.
@@ -2167,21 +2168,44 @@ plot.fuzzydid <- function(x, ...) {
     stop("No estimates are available to plot.", call. = FALSE)
   }
 
-  y_pos <- seq_along(est)
   xlim <- range(c(est, ci), na.rm = TRUE)
-  graphics::plot(
-    est,
-    y_pos,
-    xlim = xlim,
-    yaxt = "n",
-    ylab = "",
-    xlab = "Estimate",
-    pch = 19
-  )
-  graphics::axis(2, at = y_pos, labels = names(est), las = 1)
+  xpad <- 0.04 * diff(xlim)
+  if (is.finite(xpad) && xpad > 0) {
+    xlim <- xlim + c(-xpad, xpad)
+  } else {
+    xlim <- xlim + c(-0.5, 0.5)
+  }
+
+  y_pos <- rev(seq_along(est))
+  ylim <- c(0.5, length(est) + 0.5)
   ok <- stats::complete.cases(ci)
-  graphics::segments(ci[ok, 1L], y_pos[ok], ci[ok, 2L], y_pos[ok])
+
+  graphics::plot.new()
+  graphics::plot.window(xlim = xlim, ylim = ylim)
   graphics::abline(v = 0, lty = 3, col = "gray50")
+  if (any(ok)) {
+    cap <- 0.08
+    graphics::segments(
+      ci[ok, 1L], y_pos[ok],
+      ci[ok, 2L], y_pos[ok],
+      col = "gray35", lwd = 2
+    )
+    graphics::segments(
+      ci[ok, 1L], y_pos[ok] - cap,
+      ci[ok, 1L], y_pos[ok] + cap,
+      col = "gray35", lwd = 2
+    )
+    graphics::segments(
+      ci[ok, 2L], y_pos[ok] - cap,
+      ci[ok, 2L], y_pos[ok] + cap,
+      col = "gray35", lwd = 2
+    )
+  }
+  graphics::points(est, y_pos, pch = 19)
+  graphics::axis(1)
+  graphics::axis(2, at = y_pos, labels = names(est), las = 1)
+  graphics::box()
+  graphics::title(xlab = "Estimate", ylab = "")
   invisible(x)
 }
 

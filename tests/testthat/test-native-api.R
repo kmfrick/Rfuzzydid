@@ -137,6 +137,11 @@ test_that("bootstrap fit exposes coefficient intervals and covariance", {
   expect_true(is.matrix(cov))
   expect_identical(rownames(cov), names(coef(fit)))
   expect_identical(colnames(cov), names(coef(fit)))
+
+  grDevices::pdf(tempfile(fileext = ".pdf"))
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_silent(plot_out <- plot(fit))
+  expect_identical(plot_out, fit)
 })
 
 test_that("treatment is explicit and robust to RHS ordering", {
