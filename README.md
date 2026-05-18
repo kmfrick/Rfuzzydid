@@ -58,6 +58,14 @@ fuzzydid(
 is feature parity with the Stata package while exposing the estimators through
 a formula-first R interface.
 
+## Lifecycle and Prior Art
+
+`Rfuzzydid` is a maturing R implementation of the estimators introduced by
+de Chaisemartin and D'Haultfoeuille (2018a) and implemented for Stata by
+de Chaisemartin, D'Haultfoeuille, and Guyonvarch (2018b). New development is
+focused on native R parity, input validation, and review-ready documentation
+rather than adding estimators beyond those references.
+
 **Arguments:**
 
 - `data`: Data frame containing all variables.
@@ -68,6 +76,12 @@ a formula-first R interface.
 - `group_forward`: Optional name of the forward group variable for multi-period designs.
 
 A detailed introduction to the methodology is given in de Chaisemartin et al. (2018b; doi:10.1177/1536867X19854019).
+
+`y`, `d`, `group`, `time`, and `group_forward` must be numeric vectors. Numeric
+covariates are treated as continuous; factor, character, and logical covariates
+are treated as qualitative predictors. `NA` and `NaN` values are removed by
+complete-case filtering over all analysis variables. `Inf` and `-Inf` are
+rejected. Use `tagobs = TRUE` to recover the retained-row mask.
 
 ## Options
 
@@ -111,6 +125,14 @@ When covariates are included and neither `modelx` nor `sieves` is specified, all
 - `seed`: Optional integer seed for bootstrap resampling when `nose = FALSE`.
   The default `NULL` uses the current R RNG state; supply a seed for
   reproducible standard errors, confidence intervals, and bootstrap diagnostics.
+
+## Extractors
+
+`fuzzydid` objects support `print()`, `summary()`, `coef()`, `confint()`,
+`nobs()`, `formula()`, `vcov()`, `plot()`, `generics::tidy()`, and
+`generics::glance()`. They do not implement `predict()`, `fitted()`, or
+`residuals()` because the object summarizes causal estimands rather than
+observation-level fitted outcomes.
 
 ## Returned Values
 

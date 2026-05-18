@@ -1,3 +1,12 @@
+#' srr_stats_native_tests
+#'
+#' @srrstats {G5.2} This file tests representative errors and warnings for the
+#' native API.
+#' @srrstats {RE7.3} This file tests the model-like extractors and plot method
+#' required by the regression standards.
+#' @noRd
+NULL
+
 make_native_fixture <- function() {
   n_cell <- 80L
 
@@ -93,6 +102,41 @@ test_that("summary, tidy, and glance methods expose stable outputs", {
   expect_s3_class(glance_out, "data.frame")
   expect_identical(nrow(glance_out), 1L)
   expect_true(all(c("backend", "Num.Obs.", "N.reps") %in% names(glance_out)))
+
+  expect_named(coef(fit), c("W_DID", "W_TC"))
+  expect_identical(nobs(fit), nrow(df))
+  expect_identical(formula(fit), y ~ d)
+  expect_error(vcov(fit), "Bootstrap covariance is unavailable")
+  expect_output(print(fit), "fuzzydid fit")
+  grDevices::pdf(tempfile(fileext = ".pdf"))
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_silent(plot(fit))
+})
+
+test_that("bootstrap fit exposes coefficient intervals and covariance", {
+  df <- make_native_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    breps = 10,
+    seed = 1,
+    backend = "native"
+  )
+
+  ci <- confint(fit)
+  expect_true(is.matrix(ci))
+  expect_identical(rownames(ci), names(coef(fit)))
+  expect_error(confint(fit, level = 0.9), "95%")
+
+  cov <- vcov(fit)
+  expect_true(is.matrix(cov))
+  expect_identical(rownames(cov), names(coef(fit)))
+  expect_identical(colnames(cov), names(coef(fit)))
 })
 
 test_that("treatment is explicit and robust to RHS ordering", {
@@ -491,4 +535,87 @@ test_that("tagobs mask is returned without mutating input data", {
   expect_type(fit$tagobs, "logical")
   expect_length(fit$tagobs, nrow(df))
   expect_false("tagobs" %in% names(df))
+})
+
+test_that("analysis roles reject unsupported and non-finite inputs", {
+  df <- make_native_fixture()
+
+  bad_outcome <- df
+  bad_outcome$y <- as.character(bad_outcome$y)
+  expect_error(
+    fuzzydid(bad_outcome, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE),
+    "`y` must be a numeric vector",
+    fixed = TRUE
+  )
+
+  bad_treatment <- df
+  bad_treatment$d <- factor(bad_treatment$d)
+  expect_error(
+    fuzzydid(bad_treatment, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE),
+    "`d` must be a numeric vector",
+    fixed = TRUE
+  )
+
+  bad_inf <- df
+  bad_inf$y[1] <- Inf
+  expect_error(
+    fuzzydid(bad_inf, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE),
+    "`y` must not contain Inf or -Inf",
+    fixed = TRUE
+  )
+
+  bad_covariate <- make_covariate_fixture()
+  bad_covariate$x_bad <- I(as.list(seq_len(nrow(bad_covariate))))
+  expect_error(
+    fuzzydid(
+      bad_covariate,
+      y ~ d + x_bad,
+      group = "g",
+      time = "t",
+      did = TRUE,
+      nose = TRUE
+    ),
+    "Covariate `x_bad` must be a numeric, factor, character, or logical vector",
+    fixed = TRUE
+  )
+})
+
+test_that("missing values are complete-case filtered and exposed by tagobs", {
+  df <- make_native_fixture()
+  df$y[1] <- NA_real_
+  df$d[2] <- NaN
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    nose = TRUE,
+    tagobs = TRUE,
+    backend = "native"
+  )
+
+  expect_identical(fit$n, nrow(df) - 2L)
+  expect_false(fit$tagobs[1])
+  expect_false(fit$tagobs[2])
+})
+
+test_that("exact covariate relationships remain computable", {
+  df <- make_covariate_fixture()
+  df$x_exact <- df$y
+  df$x_duplicate <- df$x1
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d + x1 + x_duplicate + x_exact,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_true(all(is.finite(fit$late$estimate)))
 })

@@ -2,11 +2,13 @@
 
 ## Development Workflow
 
-- Install package dependencies, then run `R CMD check .` before opening a PR.
-- Regenerate documentation with `Rscript -e "roxygen2::roxygenise()"` after
-  updating roxygen comments.
-- Run `Rscript -e "testthat::test_dir('tests/testthat')"` for a fast local test
-  pass.
+- Install package dependencies with `rv sync`, then run `R CMD check .` from the
+  `rv` environment before opening a PR.
+- Regenerate documentation with a temporary script that calls
+  `roxygen2::roxygenise()` after updating roxygen comments.
+- Run a temporary script that calls `testthat::test_dir("tests/testthat")` for a
+  fast local test pass.
+- For SRR readiness, run `srr::srr_stats_pre_submit(".")` and `pkgcheck`.
 
 ## Stata Parity Goldens
 

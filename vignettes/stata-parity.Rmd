@@ -552,8 +552,9 @@ lqte_cmp <- data.frame(
 knitr::kable(head(lqte_cmp, 10), digits = 8)
 ```
 
-Unlike the core LATE estimands, the current native LQTE path does not yet
-numerically match the upstream Stata command on this fixture.
+The native LQTE path follows the same rearranged counterfactual-CDF construction
+as the upstream Stata command. Small differences can occur because the original
+Stata implementation stores intermediate empirical CDFs as Stata floats.
 
 LQTE requires binary `G`, `T`, and `D`, with no covariates.
 

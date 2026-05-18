@@ -14,6 +14,15 @@ knitr::opts_chunk$set(
 )
 ```
 
+```{r srr-methods-standards, include = FALSE, eval = FALSE}
+#' @srrstats {G1.3} This vignette defines the package terminology used in the
+#' fuzzy DID estimators.
+#' @srrstats {RE1.4} This vignette documents the identifying assumptions and
+#' consequences of violations for the regression-style formula interface.
+#' @noRd
+NULL
+```
+
 # Purpose
 
 This article is a practical guide to the estimators implemented in
@@ -66,6 +75,19 @@ placebo checks in periods where the treatment first stage should be zero.
 
 The formula is `outcome ~ treatment + covariates`. The `group` and `time`
 arguments name the group and period variables.
+
+Internally, `fuzzydid()` parses the formula into one numeric outcome, one
+numeric treatment, and optional covariates. Numeric covariates are treated as
+continuous predictors. Factor, character, and logical covariates are treated as
+qualitative predictors and expanded to indicator columns with the first sorted
+level omitted. With `sieves = TRUE`, continuous covariates are expanded to
+polynomial basis terms; when `sieveorder = NULL`, the order is selected by a
+deterministic five-fold cross-validation rule.
+
+Rows with `NA` or `NaN` in analysis variables are removed by complete-case
+filtering. `Inf` and `-Inf` are rejected because they are not meaningful support
+points for the empirical means and quantile maps. Use `tagobs = TRUE` to return
+the retained-row mask.
 
 ```{r basic-workflow}
 library(Rfuzzydid)
@@ -183,6 +205,18 @@ reproducibility. Use `cluster` for one-way clustered bootstrap inference.
 `nose = TRUE` skips bootstrap inference and returns point estimates only. This
 is useful while checking data construction, but final empirical results should
 usually report uncertainty.
+
+The returned object is a causal estimand summary, not a predictive model.
+Accordingly, it supports estimate extractors such as `coef()`, `confint()`,
+`vcov()`, `nobs()`, `formula()`, `generics::tidy()`, and `generics::glance()`,
+but it does not define observation-level fitted values, residuals, or
+predictions.
+
+Runtime is approximately linear in the number of bootstrap replications. Within
+each replication, the no-covariate estimators are dominated by group-period
+subsetting and empirical distribution calculations. Covariate-adjusted
+estimators additionally fit nuisance OLS/logit/probit models, and sieve
+estimation grows with the number of generated basis terms.
 
 # Translating from Stata
 

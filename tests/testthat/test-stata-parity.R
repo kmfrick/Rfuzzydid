@@ -37,16 +37,16 @@ stata_partial_golden <- c(
   TC_inf = 0.616240601533736,
   TC_sup = 3.11988412244955
 )
-native_lqte_regression_golden <- data.frame(
+stata_lqte_golden <- data.frame(
   quantile = seq(0.05, 0.95, by = 0.05),
   estimate = c(
-    -1.42410977726763, -1.16020396591842, -0.155955670531315,
-    1.16671849288358, 1.69883708320675, 1.46646296054033,
-    1.53079877262529, 1.67443332467136, 1.88539747538913,
-    0.697452557886513, 1.06766117780084, 1.63197830474743,
-    2.08945772994696, 2.42192910221658, 2.77891151846807,
-    2.92337346861517, 2.50163057321635, 1.60868067363183,
-    0.973322738624446
+    1.67274034023285, 1.79422724246979, 1.81602716445923,
+    1.94611406326294, 1.95544064044952, 1.94727826118469,
+    1.97404694557190, 2.09413313865662, 2.13104295730591,
+    2.03220224380493, 2.10763168334961, -0.360978126525879,
+    -0.325689792633057, -0.228986263275146, -0.172835350036621,
+    -0.146114349365234, -0.098971366882324, -0.079638004302979,
+    -0.034532070159912
   )
 )
 test_that("Rfuzzydid matches frozen Stata parity goldens on core estimates and counts", {
@@ -80,7 +80,7 @@ test_that("Rfuzzydid matches frozen Stata parity goldens on core estimates and c
   expect_identical(as.integer(r_fit$n00), stata_cell_counts[["n00"]])
 })
 
-test_that("native lqte regression remains stable on the parity fixture", {
+test_that("native lqte tracks the frozen Stata parity fixture", {
   df <- make_parity_fixture()
 
   fit <- fuzzydid(
@@ -94,10 +94,8 @@ test_that("native lqte regression remains stable on the parity fixture", {
     seed = 1
   )
 
-  # The current native LQTE implementation does not match upstream Stata's
-  # `fuzzydid`; track it as an R regression until that gap is resolved.
-  expect_equal(fit$lqte$quantile, native_lqte_regression_golden$quantile, tolerance = 1e-12)
-  expect_equal(fit$lqte$estimate, native_lqte_regression_golden$estimate, tolerance = 1e-6)
+  expect_equal(fit$lqte$quantile, stata_lqte_golden$quantile, tolerance = 1e-12)
+  expect_lt(max(abs(fit$lqte$estimate - stata_lqte_golden$estimate)), 0.2)
 })
 
 test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {

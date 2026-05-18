@@ -33,7 +33,7 @@ fuzzydid(
 \arguments{
 \item{data}{A \code{data.frame}.}
 
-\item{formula}{Formula of the form `y ~ d + covariates`.}
+\item{formula}{Formula of the form \code{y ~ d + covariates}.}
 
 \item{group}{Name of the group variable (backward group for multi-period).}
 
@@ -59,27 +59,28 @@ treatment values for TC/CIC.}
 
 \item{nose}{Logical; skip bootstrap standard errors and confidence intervals.}
 
-\item{cluster}{Optional name of cluster variable for clustered bootstrap.}
+\item{cluster}{Optional name of cluster variable for one-way clustered
+bootstrap resampling.}
 
 \item{breps}{Integer number of bootstrap replications.}
 
 \item{eqtest}{Logical; compute equality tests across requested LATE estimands.}
 
-\item{modelx}{Optional native covariate-adjusted methods (`ols`, `logit`,
-`probit`). Two entries are required for binary treatments and three for
+\item{modelx}{Optional native covariate-adjusted methods (\code{ols}, \code{logit},
+\code{probit}). Two entries are required for binary treatments and three for
 ordered multi-valued treatments.}
 
 \item{sieves}{Logical; use sieve expansion for continuous covariates.}
 
-\item{sieveorder}{Optional sieve order control for `sieves = TRUE`.
-`NULL` (default) selects order by deterministic 5-fold CV.
+\item{sieveorder}{Optional sieve order control for \code{sieves = TRUE}.
+\code{NULL} (default) selects order by deterministic 5-fold CV.
 A scalar value applies to both outcome and treatment sieve bases.
 A length-2 vector is accepted for backward compatibility and interpreted
-as `(outcome_order, treatment_order)`.}
+as \verb{(outcome_order, treatment_order)}.}
 
 \item{tagobs}{Logical; return logical mask of observations used.}
 
-\item{backend}{One of `"auto"` or `"native"`.}
+\item{backend}{One of \code{"auto"} or \code{"native"}.}
 
 \item{seed}{Optional integer seed used for bootstrap resampling when
 \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the
@@ -87,29 +88,50 @@ current RNG state. Supply a value to make bootstrap standard errors,
 confidence intervals, and diagnostics reproducible.}
 
 \item{treatment}{Optional treatment variable name for multi-term formulas.
-If `NULL`, treatment is inferred from formula RHS when unambiguous.}
+If \code{NULL}, treatment is inferred from formula RHS when unambiguous.}
 }
 \value{
 An object of class \code{"fuzzydid"}. This is a list whose
-  \code{late} component is a data frame of requested LATE-type estimators
-  with columns \code{estimator}, \code{estimate}, \code{std.error},
-  \code{conf.low}, and \code{conf.high}. \code{eqtest} is either
-  \code{NULL} or an analogous data frame of pairwise equality contrasts,
-  and \code{lqte} is either \code{NULL} or a data frame with columns
-  \code{quantile}, \code{estimate}, \code{std.error}, \code{conf.low}, and
-  \code{conf.high} for local quantile treatment effects. Additional
-  components include \code{matrices}, a named list of Stata-style result
-  matrices; \code{tagobs}, an optional logical mask of retained
-  observations; sample-size diagnostics \code{n}, \code{n11}, \code{n10},
-  \code{n01}, and \code{n00}; bootstrap diagnostics \code{n_reps},
-  \code{n_misreps}, and \code{share_failures}; and metadata such as
-  \code{backend}, \code{call}, and \code{options}. The estimate tables
-  report point estimates and, unless \code{nose = TRUE}, bootstrap
-  standard errors and percentile confidence limits.
+\code{late} component is a data frame of requested LATE-type estimators
+with columns \code{estimator}, \code{estimate}, \code{std.error},
+\code{conf.low}, and \code{conf.high}. \code{eqtest} is either
+\code{NULL} or an analogous data frame of pairwise equality contrasts,
+and \code{lqte} is either \code{NULL} or a data frame with columns
+\code{quantile}, \code{estimate}, \code{std.error}, \code{conf.low}, and
+\code{conf.high} for local quantile treatment effects. Additional
+components include \code{matrices}, a named list of Stata-style result
+matrices; \code{tagobs}, an optional logical mask of retained
+observations; sample-size diagnostics \code{n}, \code{n11}, \code{n10},
+\code{n01}, and \code{n00}; bootstrap diagnostics \code{n_reps},
+\code{n_misreps}, and \code{share_failures}; and metadata such as
+\code{backend}, \code{call}, and \code{options}. The estimate tables
+report point estimates and, unless \code{nose = TRUE}, bootstrap
+standard errors and percentile confidence limits.
 }
 \description{
 Formula-first interface for fuzzy difference-in-differences estimators.
-Estimation is fully native in R.
+Estimation is fully native in R. The object returned by \code{fuzzydid()}
+is an estimand summary rather than a predictive regression model: it stores
+local average and local quantile treatment-effect estimates, bootstrap
+uncertainty summaries, design cell counts, and metadata needed by extractor
+methods.
+}
+\details{
+\code{fuzzydid()} uses complete cases across the outcome, treatment, group,
+time, optional forward-group, covariate, and cluster variables. Missing
+\code{NA} and \code{NaN} values are dropped; non-finite numeric values such
+as \code{Inf} and \code{-Inf} are rejected. The outcome and treatment must
+be numeric vectors. Group and time identifiers must be numeric vectors; with
+one group variable, group values must be in \code{{0, 1, NA}}. Covariates may
+be numeric, factor, character, or logical vectors. Numeric covariates enter
+as continuous predictors; factor, character, and logical covariates enter as
+qualitative predictors expanded to indicator columns. When \code{sieves =
+TRUE}, continuous covariates are expanded to polynomial sieve terms.
+
+Standard errors and confidence intervals are percentile bootstrap summaries.
+Use \code{seed} to make bootstrap draws reproducible. If \code{tagobs =
+TRUE}, the returned object includes a logical vector identifying the input
+rows retained after complete-case filtering.
 }
 \examples{
 make_example_cell <- function(g, t, ones, n_cell = 20L) {

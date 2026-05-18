@@ -17,7 +17,8 @@ Imports: generics, knitr, rmarkdown
 Suggests: broom, foreign, haven, modelsummary, pkgload, testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-RoxygenNote: 7.3.3
+Roxygen: list(markdown = TRUE, roclets = c("namespace", "rd", "srr::srr_stats_roclet"))
 URL: https://kmfrick.github.io/Rfuzzydid/,
     https://github.com/kmfrick/Rfuzzydid
 BugReports: https://github.com/kmfrick/Rfuzzydid/issues
+Config/roxygen2/version: 8.0.0

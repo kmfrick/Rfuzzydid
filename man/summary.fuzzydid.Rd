@@ -13,9 +13,9 @@
 }
 \value{
 The input \code{object}, returned invisibly with class
-  \code{"fuzzydid"}, after printing the available estimator tables. This
-  method is called for its side effect of displaying the \code{late},
-  \code{eqtest}, and \code{lqte} components in a compact tabular form.
+\code{"fuzzydid"}, after printing the available estimator tables. This
+method is called for its side effect of displaying the \code{late},
+\code{eqtest}, and \code{lqte} components in a compact tabular form.
 }
 \description{
 Print a compact summary table for fuzzydid results.

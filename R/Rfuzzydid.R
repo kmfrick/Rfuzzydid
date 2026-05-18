@@ -1,7 +1,11 @@
 #' @title fuzzydid
 #' @description
 #' Formula-first interface for fuzzy difference-in-differences estimators.
-#' Estimation is fully native in R.
+#' Estimation is fully native in R. The object returned by \code{fuzzydid()}
+#' is an estimand summary rather than a predictive regression model: it stores
+#' local average and local quantile treatment-effect estimates, bootstrap
+#' uncertainty summaries, design cell counts, and metadata needed by extractor
+#' methods.
 #' @param data A \code{data.frame}.
 #' @param formula Formula of the form `y ~ d + covariates`.
 #' @param treatment Optional treatment variable name for multi-term formulas.
@@ -19,7 +23,8 @@
 #' @param numerator Logical; return estimator numerators for DID/TC/CIC.
 #' @param partial Logical; request TC partial-identification bounds.
 #' @param nose Logical; skip bootstrap standard errors and confidence intervals.
-#' @param cluster Optional name of cluster variable for clustered bootstrap.
+#' @param cluster Optional name of cluster variable for one-way clustered
+#'   bootstrap resampling.
 #' @param breps Integer number of bootstrap replications.
 #' @param eqtest Logical; compute equality tests across requested LATE estimands.
 #' @param modelx Optional native covariate-adjusted methods (`ols`, `logit`,
@@ -37,6 +42,23 @@
 #'   \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the
 #'   current RNG state. Supply a value to make bootstrap standard errors,
 #'   confidence intervals, and diagnostics reproducible.
+#' @details
+#' \code{fuzzydid()} uses complete cases across the outcome, treatment, group,
+#' time, optional forward-group, covariate, and cluster variables. Missing
+#' \code{NA} and \code{NaN} values are dropped; non-finite numeric values such
+#' as \code{Inf} and \code{-Inf} are rejected. The outcome and treatment must
+#' be numeric vectors. Group and time identifiers must be numeric vectors; with
+#' one group variable, group values must be in \code{{0, 1, NA}}. Covariates may
+#' be numeric, factor, character, or logical vectors. Numeric covariates enter
+#' as continuous predictors; factor, character, and logical covariates enter as
+#' qualitative predictors expanded to indicator columns. When \code{sieves =
+#' TRUE}, continuous covariates are expanded to polynomial sieve terms.
+#'
+#' Standard errors and confidence intervals are percentile bootstrap summaries.
+#' Use \code{seed} to make bootstrap draws reproducible. If \code{tagobs =
+#' TRUE}, the returned object includes a logical vector identifying the input
+#' rows retained after complete-case filtering.
+#'
 #' @return An object of class \code{"fuzzydid"}. This is a list whose
 #'   \code{late} component is a data frame of requested LATE-type estimators
 #'   with columns \code{estimator}, \code{estimate}, \code{std.error},
@@ -378,6 +400,53 @@ fuzzydid <- function(
   )
 }
 
+.is_plain_vector <- function(x) {
+  is.atomic(x) && is.null(dim(x))
+}
+
+.validate_input_columns <- function(data, y_name, d_name, covariates, group, time, group_forward, cluster) {
+  required_numeric <- unique(c(y_name, d_name, group, time, group_forward))
+  required_numeric <- required_numeric[!is.na(required_numeric) & nzchar(required_numeric)]
+
+  for (nm in required_numeric) {
+    x <- data[[nm]]
+    if (!.is_plain_vector(x) || !is.numeric(x)) {
+      stop(sprintf("`%s` must be a numeric vector.", nm), call. = FALSE)
+    }
+    bad <- !is.na(x) & !is.finite(x)
+    if (any(bad)) {
+      stop(sprintf("`%s` must not contain Inf or -Inf.", nm), call. = FALSE)
+    }
+  }
+
+  for (nm in covariates) {
+    x <- data[[nm]]
+    ok_type <- .is_plain_vector(x) &&
+      (is.numeric(x) || is.factor(x) || is.character(x) || is.logical(x))
+    if (!ok_type) {
+      stop(
+        sprintf("Covariate `%s` must be a numeric, factor, character, or logical vector.", nm),
+        call. = FALSE
+      )
+    }
+    if (is.numeric(x)) {
+      bad <- !is.na(x) & !is.finite(x)
+      if (any(bad)) {
+        stop(sprintf("Covariate `%s` must not contain Inf or -Inf.", nm), call. = FALSE)
+      }
+    }
+  }
+
+  if (!is.null(cluster)) {
+    x <- data[[cluster]]
+    if (!.is_plain_vector(x)) {
+      stop(sprintf("Cluster variable `%s` must be a vector.", cluster), call. = FALSE)
+    }
+  }
+
+  invisible(NULL)
+}
+
 .prepare_input_data <- function(data, y_name, d_name, covariates, group, time, group_forward, cluster) {
   role_vars <- unique(c(y_name, d_name, group, time, group_forward, covariates, cluster))
   role_vars <- role_vars[!is.na(role_vars) & nzchar(role_vars)]
@@ -389,6 +458,17 @@ fuzzydid <- function(
       call. = FALSE
     )
   }
+
+  .validate_input_columns(
+    data = data,
+    y_name = y_name,
+    d_name = d_name,
+    covariates = covariates,
+    group = group,
+    time = time,
+    group_forward = group_forward,
+    cluster = cluster
+  )
 
   cov_types <- .infer_covariate_types(data, covariates)
 
@@ -485,6 +565,29 @@ fuzzydid <- function(
   probs[probs < 0] <- 0
   probs[probs > 1] <- 1
   stats::quantile(y_d01, probs = probs, names = FALSE, type = 1)
+}
+
+.cdf_at <- function(sample, x) {
+  if (length(sample) == 0L) {
+    return(rep(NA_real_, length(x)))
+  }
+  vapply(x, function(xx) mean(sample <= xx), numeric(1))
+}
+
+.counterfactual_inverse_map <- function(y_target, y_from, y_to) {
+  if (length(y_from) == 0L || length(y_to) == 0L || length(y_target) == 0L) {
+    return(rep.int(NA_real_, length(y_target)))
+  }
+
+  probs <- .cdf_at(y_from, y_target)
+  out <- stats::quantile(y_to, probs = probs, names = FALSE, type = 1)
+  lower <- min(y_to, na.rm = TRUE) - max(1, diff(range(y_to, na.rm = TRUE)))
+  out[probs <= 0] <- lower
+  as.numeric(out)
+}
+
+.rearrange_cdf <- function(x) {
+  sort(pmin(pmax(x, 0), 1), na.last = TRUE)
 }
 
 .is_binary <- function(x) {
@@ -1230,7 +1333,8 @@ fuzzydid <- function(
 
 .estimate_lqte_no_cov <- function(sub_df, y_name, d_true_name) {
   y <- as.numeric(sub_df[[y_name]])
-  d <- as.numeric(sub_df[[d_true_name]])
+  d_true <- as.numeric(sub_df[[d_true_name]])
+  d <- as.integer(factor(d_true, levels = sort(unique(d_true))))
   g <- as.integer(sub_df$.g_binary)
   t <- as.integer(sub_df$.t_binary)
 
@@ -1239,30 +1343,68 @@ fuzzydid <- function(
   idx01 <- g == 0 & t == 1
   idx00 <- g == 0 & t == 0
 
-  den <- .safe_mean(d[idx11]) - .safe_mean(d[idx10])
   q_grid <- seq(0.05, 0.95, by = 0.05)
 
-  if (!is.finite(den) || den == 0) {
+  mean_d11 <- .safe_mean(d_true[idx11])
+  mean_d10 <- .safe_mean(d_true[idx10])
+  den <- mean_d11 - mean_d10
+
+  if (!is.finite(den) || den == 0 || length(unique(d)) != 2L) {
     out <- rep(NA_real_, length(q_grid))
     names(out) <- sprintf("%.2f", q_grid)
     return(out)
   }
 
-  mapped <- .counterfactual_quantile_map(
-    y_target = y[idx10],
-    y_d00 = y[idx00],
-    y_d01 = y[idx01]
-  )
+  y_range <- range(y, na.rm = TRUE)
+  grid <- sort(unique(c(y, y_range[[1L]] - max(1, diff(y_range)))))
+  max_y11 <- max(y[idx11], na.rm = TRUE) - 0.001
 
-  out <- vapply(
-    q_grid,
-    function(q) {
-      q11 <- .safe_quantile(y[idx11], q)
-      qcf <- .safe_quantile(mapped, q)
-      (q11 - qcf) / den
-    },
-    numeric(1)
-  )
+  q_mat <- matrix(NA_real_, nrow = length(q_grid), ncol = 2L)
+
+  for (status in 1:2) {
+    f_status <- rep(0, length(grid))
+
+    y11 <- y[d == status & idx11]
+    if (length(y11) > 0L) {
+      f_11 <- .cdf_at(y11, grid)
+      if (status == 1L) {
+        f_status <- (1 - mean_d11) * f_11 / (1 - mean_d11 - (1 - mean_d10))
+      } else {
+        f_status <- mean_d11 * f_11 / den
+      }
+    }
+
+    y10 <- y[d == status & idx10]
+    y00 <- y[d == status & idx00]
+    y01 <- y[d == status & idx01]
+    if (length(y10) == 0L || length(y00) == 0L || length(y01) == 0L) {
+      out <- rep(NA_real_, length(q_grid))
+      names(out) <- sprintf("%.2f", q_grid)
+      return(out)
+    }
+
+    inv_q <- .counterfactual_inverse_map(
+      y_target = grid,
+      y_from = y01,
+      y_to = y00
+    )
+    f_10 <- .cdf_at(y10, inv_q)
+    if (status == 1L) {
+      f_status <- f_status - (1 - mean_d10) * f_10 / (1 - mean_d11 - (1 - mean_d10))
+    } else {
+      f_status <- f_status - mean_d10 * f_10 / den
+    }
+
+    f_status <- .rearrange_cdf(f_status)
+    f_status[grid >= max_y11] <- 1
+
+    for (i in seq_along(q_grid)) {
+      idx <- which(f_status >= q_grid[[i]])
+      q_mat[[i, status]] <- if (length(idx) == 0L) NA_real_ else min(grid[idx])
+    }
+  }
+
+  out <- q_mat[, 2L] - q_mat[, 1L]
 
   names(out) <- sprintf("%.2f", q_grid)
   out
@@ -1578,6 +1720,24 @@ fuzzydid <- function(
   list(se = as.numeric(se), ci = ci)
 }
 
+.calc_boot_vcov <- function(reps_late, reps_lqte) {
+  reps <- NULL
+  if (!is.null(reps_late) && ncol(reps_late) > 0L) {
+    reps <- reps_late
+  }
+  if (!is.null(reps_lqte) && ncol(reps_lqte) > 0L) {
+    lqte_reps <- reps_lqte
+    colnames(lqte_reps) <- paste0("LQTE_", colnames(lqte_reps))
+    reps <- if (is.null(reps)) lqte_reps else cbind(reps, lqte_reps)
+  }
+  if (is.null(reps) || ncol(reps) == 0L) {
+    return(NULL)
+  }
+
+  reps <- .recode_bootstrap_sentinel(reps)
+  stats::cov(reps, use = "pairwise.complete.obs")
+}
+
 .recode_bootstrap_sentinel <- function(x) {
   if (is.null(x)) return(x)
   boot_sentinel <- 1000000000000000
@@ -1643,11 +1803,13 @@ fuzzydid <- function(
   n_reps <- NA_integer_
   n_misreps <- NA_integer_
   share_failures <- NA_real_
+  vcov_mat <- NULL
 
   if (!opts$nose) {
     n_reps <- bt$n_reps
     n_misreps <- bt$n_misreps
     share_failures <- bt$share_failures
+    vcov_mat <- .calc_boot_vcov(bt$reps_late, bt$reps_lqte)
     late_boot <- .calc_boot_summary(bt$reps_late)
     late$std.error <- late_boot$se
     if (length(late_boot$se) > 0L) {
@@ -1719,6 +1881,7 @@ fuzzydid <- function(
     eqtest = eqtest,
     lqte = lqte,
     matrices = matrices,
+    vcov = vcov_mat,
     tagobs = tag_mask,
     n = nrow(df),
     n11 = counts$n11,
@@ -1792,6 +1955,234 @@ summary.fuzzydid <- function(object, ...) {
   }
 
   invisible(object)
+}
+
+.coef_fuzzydid <- function(x) {
+  vals <- numeric(0)
+  if (!is.null(x$late) && nrow(x$late) > 0L) {
+    vals <- stats::setNames(x$late$estimate, x$late$estimator)
+  }
+  if (!is.null(x$lqte) && nrow(x$lqte) > 0L) {
+    lqte_vals <- stats::setNames(
+      x$lqte$estimate,
+      paste0("LQTE_", sprintf("%.2f", x$lqte$quantile))
+    )
+    vals <- c(vals, lqte_vals)
+  }
+  vals
+}
+
+.confint_fuzzydid <- function(x) {
+  out <- matrix(
+    numeric(0),
+    nrow = 0L,
+    ncol = 2L,
+    dimnames = list(character(0), c("2.5 %", "97.5 %"))
+  )
+  if (!is.null(x$late) && nrow(x$late) > 0L) {
+    out <- rbind(
+      out,
+      matrix(
+        c(x$late$conf.low, x$late$conf.high),
+        ncol = 2L,
+        dimnames = list(x$late$estimator, c("2.5 %", "97.5 %"))
+      )
+    )
+  }
+  if (!is.null(x$lqte) && nrow(x$lqte) > 0L) {
+    rn <- paste0("LQTE_", sprintf("%.2f", x$lqte$quantile))
+    out <- rbind(
+      out,
+      matrix(
+        c(x$lqte$conf.low, x$lqte$conf.high),
+        ncol = 2L,
+        dimnames = list(rn, c("2.5 %", "97.5 %"))
+      )
+    )
+  }
+  out
+}
+
+#' @title print.fuzzydid
+#' @description Print a compact fuzzydid object header and estimator table.
+#' @param x A fuzzydid object.
+#' @param ... Unused.
+#' @return The input \code{x}, returned invisibly.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE)
+#' print(fit)
+#' @export
+print.fuzzydid <- function(x, ...) {
+  if (!inherits(x, "fuzzydid")) {
+    stop("`x` must be a fuzzydid object.", call. = FALSE)
+  }
+  cat(sprintf("fuzzydid fit: %s observations", x$n), "\n")
+  if (!is.null(x$late) && nrow(x$late) > 0L) {
+    print(x$late, row.names = FALSE)
+  }
+  if (!is.null(x$lqte) && nrow(x$lqte) > 0L) {
+    cat("\nLQTE estimators: ", nrow(x$lqte), " quantiles\n", sep = "")
+  }
+  invisible(x)
+}
+
+#' @title coef.fuzzydid
+#' @description Extract fuzzydid point estimates.
+#' @param object A fuzzydid object.
+#' @param ... Unused.
+#' @return A named numeric vector of LATE and LQTE point estimates.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE)
+#' coef(fit)
+#' @export
+coef.fuzzydid <- function(object, ...) {
+  if (!inherits(object, "fuzzydid")) {
+    stop("`object` must be a fuzzydid object.", call. = FALSE)
+  }
+  .coef_fuzzydid(object)
+}
+
+#' @title confint.fuzzydid
+#' @description Extract stored percentile bootstrap confidence intervals.
+#' @param object A fuzzydid object.
+#' @param parm Optional parameter subset.
+#' @param level Confidence level. Only \code{0.95} is currently stored.
+#' @param ... Unused.
+#' @return A matrix with lower and upper confidence limits.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE)
+#' confint(fit)
+#' @export
+confint.fuzzydid <- function(object, parm, level = 0.95, ...) {
+  if (!inherits(object, "fuzzydid")) {
+    stop("`object` must be a fuzzydid object.", call. = FALSE)
+  }
+  if (!identical(as.numeric(level), 0.95)) {
+    stop("Only the stored 95% confidence intervals are available.", call. = FALSE)
+  }
+  out <- .confint_fuzzydid(object)
+  if (!missing(parm)) {
+    out <- out[parm, , drop = FALSE]
+  }
+  out
+}
+
+#' @title nobs.fuzzydid
+#' @description Extract the estimation sample size.
+#' @param object A fuzzydid object.
+#' @param ... Unused.
+#' @return Integer number of observations used for estimation.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE)
+#' nobs(fit)
+#' @export
+nobs.fuzzydid <- function(object, ...) {
+  if (!inherits(object, "fuzzydid")) {
+    stop("`object` must be a fuzzydid object.", call. = FALSE)
+  }
+  as.integer(object$n)
+}
+
+#' @title formula.fuzzydid
+#' @description Extract the formula used to fit a fuzzydid object.
+#' @param x A fuzzydid object.
+#' @param ... Unused.
+#' @return The original formula.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE)
+#' formula(fit)
+#' @export
+formula.fuzzydid <- function(x, ...) {
+  if (!inherits(x, "fuzzydid")) {
+    stop("`x` must be a fuzzydid object.", call. = FALSE)
+  }
+  x$formula
+}
+
+#' @title vcov.fuzzydid
+#' @description Extract the bootstrap covariance matrix for stored estimates.
+#' @param object A fuzzydid object.
+#' @param ... Unused.
+#' @return A covariance matrix for \code{coef(object)}.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE,
+#'                 breps = 5, seed = 1)
+#' vcov(fit)
+#' @export
+vcov.fuzzydid <- function(object, ...) {
+  if (!inherits(object, "fuzzydid")) {
+    stop("`object` must be a fuzzydid object.", call. = FALSE)
+  }
+  if (is.null(object$vcov)) {
+    stop("Bootstrap covariance is unavailable; refit with `nose = FALSE`.", call. = FALSE)
+  }
+  object$vcov
+}
+
+#' @title plot.fuzzydid
+#' @description Plot fuzzydid point estimates and stored confidence intervals.
+#' @param x A fuzzydid object.
+#' @param ... Unused.
+#' @return The input \code{x}, returned invisibly.
+#' @examples
+#' df <- expand.grid(i = seq_len(20), g = 0:1, t = 0:1)
+#' df$d <- as.integer(df$i <= c(4, 8, 6, 16)[1 + df$t + 2 * df$g])
+#' df$y <- 1 + 0.5 * df$g + 0.4 * df$t + 2 * df$d + sin(df$i / 7)
+#'
+#' fit <- fuzzydid(df, y ~ d, group = "g", time = "t", did = TRUE, nose = TRUE)
+#' plot(fit)
+#' @export
+plot.fuzzydid <- function(x, ...) {
+  if (!inherits(x, "fuzzydid")) {
+    stop("`x` must be a fuzzydid object.", call. = FALSE)
+  }
+
+  est <- .coef_fuzzydid(x)
+  ci <- .confint_fuzzydid(x)
+  if (length(est) == 0L) {
+    stop("No estimates are available to plot.", call. = FALSE)
+  }
+
+  y_pos <- seq_along(est)
+  xlim <- range(c(est, ci), na.rm = TRUE)
+  graphics::plot(
+    est,
+    y_pos,
+    xlim = xlim,
+    yaxt = "n",
+    ylab = "",
+    xlab = "Estimate",
+    pch = 19
+  )
+  graphics::axis(2, at = y_pos, labels = names(est), las = 1)
+  ok <- stats::complete.cases(ci)
+  graphics::segments(ci[ok, 1L], y_pos[ok], ci[ok, 2L], y_pos[ok])
+  graphics::abline(v = 0, lty = 3, col = "gray50")
+  invisible(x)
 }
 
 #' @title tidy.fuzzydid
