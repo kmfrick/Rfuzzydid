@@ -190,36 +190,6 @@ fuzzydid <- function(
     seed = seed
   )
 
-  .validate_common_options(opts)
-  parsed <- .parse_fuzzy_formula(formula, data, treatment = treatment)
-  prepared <- .prepare_input_data(
-    data = data,
-    y_name = parsed$y_name,
-    d_name = parsed$d_name,
-    covariates = parsed$covariates,
-    group = group,
-    time = time,
-    group_forward = group_forward,
-    cluster = cluster
-  )
-
-  out <- .run_native_backend(
-    prepared = prepared,
-    opts = opts
-  )
-
-  out$backend <- "native"
-  out$formula <- formula
-  out$group <- group
-  out$time <- time
-  out$group_forward <- group_forward
-  out$call <- match.call()
-  out$options <- opts
-  class(out) <- "fuzzydid"
-  out
-}
-
-.validate_common_options <- function(opts) {
   if (!opts$did && !opts$tc && !opts$cic && !opts$lqte) {
     stop(
       "At least one estimator must be requested: did, tc, cic, or lqte.",
@@ -270,7 +240,8 @@ fuzzydid <- function(
   }
 
   if (!is.null(opts$sieveorder)) {
-    if (!is.numeric(opts$sieveorder) || !(length(opts$sieveorder) %in% c(1L, 2L))) {
+    valid_length <- length(opts$sieveorder) %in% c(1L, 2L)
+    if (!is.numeric(opts$sieveorder) || !valid_length) {
       stop("`sieveorder` must be numeric with length 1 or 2.", call. = FALSE)
     }
     if (!all(is.finite(opts$sieveorder))) {
@@ -325,9 +296,7 @@ fuzzydid <- function(
       stop("`breps` must be an integer scalar >= 2.", call. = FALSE)
     }
   }
-}
 
-.parse_fuzzy_formula <- function(formula, data, treatment = NULL) {
   tr <- stats::terms(formula, data = data)
   rhs_terms <- attr(tr, "term.labels")
   if (length(rhs_terms) < 1L) {
@@ -363,54 +332,23 @@ fuzzydid <- function(
 
   y_name <- lhs_vars[[1L]]
   covariates <- rhs_terms[rhs_terms != d_name]
+  role_vars <- unique(c(y_name, d_name, group, time, group_forward, covariates, cluster))
+  role_vars <- role_vars[!is.na(role_vars) & nzchar(role_vars)]
 
-  needed <- c(y_name, d_name, covariates)
-  missing_vars <- setdiff(needed, names(data))
+  missing_vars <- setdiff(role_vars, names(data))
   if (length(missing_vars) > 0L) {
     stop(
-      sprintf("Variables not found in `data`: %s", toString(missing_vars)),
+      sprintf("Required variable(s) not found in `data`: %s", toString(missing_vars)),
       call. = FALSE
     )
   }
 
-  list(
-    y_name = y_name,
-    d_name = d_name,
-    covariates = covariates
-  )
-}
-
-.infer_covariate_types <- function(data, covariates) {
-  if (length(covariates) == 0L) {
-    return(list(continuous = character(0), qualitative = character(0)))
-  }
-
-  is_qual <- vapply(
-    covariates,
-    function(v) {
-      x <- data[[v]]
-      is.factor(x) || is.character(x) || is.logical(x)
-    },
-    logical(1)
-  )
-
-  list(
-    continuous = covariates[!is_qual],
-    qualitative = covariates[is_qual]
-  )
-}
-
-.is_plain_vector <- function(x) {
-  is.atomic(x) && is.null(dim(x))
-}
-
-.validate_input_columns <- function(data, y_name, d_name, covariates, group, time, group_forward, cluster) {
   required_numeric <- unique(c(y_name, d_name, group, time, group_forward))
   required_numeric <- required_numeric[!is.na(required_numeric) & nzchar(required_numeric)]
 
   for (nm in required_numeric) {
     x <- data[[nm]]
-    if (!.is_plain_vector(x) || !is.numeric(x)) {
+    if (!(is.atomic(x) && is.null(dim(x))) || !is.numeric(x)) {
       stop(sprintf("`%s` must be a numeric vector.", nm), call. = FALSE)
     }
     bad <- !is.na(x) & !is.finite(x)
@@ -421,7 +359,8 @@ fuzzydid <- function(
 
   for (nm in covariates) {
     x <- data[[nm]]
-    ok_type <- .is_plain_vector(x) &&
+    ok_type <- is.atomic(x) &&
+      is.null(dim(x)) &&
       (is.numeric(x) || is.factor(x) || is.character(x) || is.logical(x))
     if (!ok_type) {
       stop(
@@ -439,58 +378,45 @@ fuzzydid <- function(
 
   if (!is.null(cluster)) {
     x <- data[[cluster]]
-    if (!.is_plain_vector(x)) {
+    if (!(is.atomic(x) && is.null(dim(x)))) {
       stop(sprintf("Cluster variable `%s` must be a vector.", cluster), call. = FALSE)
     }
   }
 
-  invisible(NULL)
-}
-
-.prepare_input_data <- function(data, y_name, d_name, covariates, group, time, group_forward, cluster) {
-  role_vars <- unique(c(y_name, d_name, group, time, group_forward, covariates, cluster))
-  role_vars <- role_vars[!is.na(role_vars) & nzchar(role_vars)]
-
-  missing_vars <- setdiff(role_vars, names(data))
-  if (length(missing_vars) > 0L) {
-    stop(
-      sprintf("Required variable(s) not found in `data`: %s", toString(missing_vars)),
-      call. = FALSE
+  if (length(covariates) == 0L) {
+    cov_types <- list(continuous = character(0), qualitative = character(0))
+  } else {
+    is_qual <- vapply(
+      covariates,
+      function(v) {
+        x <- data[[v]]
+        is.factor(x) || is.character(x) || is.logical(x)
+      },
+      logical(1)
+    )
+    cov_types <- list(
+      continuous = covariates[!is_qual],
+      qualitative = covariates[is_qual]
     )
   }
 
-  .validate_input_columns(
-    data = data,
-    y_name = y_name,
-    d_name = d_name,
-    covariates = covariates,
-    group = group,
-    time = time,
-    group_forward = group_forward,
-    cluster = cluster
-  )
-
-  cov_types <- .infer_covariate_types(data, covariates)
-
-  df <- data
   if (is.null(group_forward)) {
-    complete_mask <- stats::complete.cases(df[, role_vars, drop = FALSE])
+    complete_mask <- stats::complete.cases(data[, role_vars, drop = FALSE])
   } else {
     other_vars <- unique(c(y_name, d_name, time, covariates, cluster))
     other_vars <- other_vars[!is.na(other_vars) & nzchar(other_vars)]
-    complete_other <- stats::complete.cases(df[, other_vars, drop = FALSE])
-    valid_group <- !(is.na(df[[group]]) & is.na(df[[group_forward]]))
+    complete_other <- stats::complete.cases(data[, other_vars, drop = FALSE])
+    valid_group <- !(is.na(data[[group]]) & is.na(data[[group_forward]]))
     complete_mask <- complete_other & valid_group
   }
 
-  df_used <- df[complete_mask, , drop = FALSE]
-
+  df_used <- data[complete_mask, , drop = FALSE]
   if (nrow(df_used) == 0L) {
     stop("No observations remain after dropping missing values.", call. = FALSE)
   }
 
-  list(
-    data = df,
+  prepared <- list(
+    data = data,
     used = df_used,
     mask = complete_mask,
     y_name = y_name,
@@ -502,6 +428,21 @@ fuzzydid <- function(
     group_forward = group_forward,
     cluster = cluster
   )
+
+  out <- .run_native_backend(
+    prepared = prepared,
+    opts = opts
+  )
+
+  out$backend <- "native"
+  out$formula <- formula
+  out$group <- group
+  out$time <- time
+  out$group_forward <- group_forward
+  out$call <- match.call()
+  out$options <- opts
+  class(out) <- "fuzzydid"
+  out
 }
 
 .to_column_matrix <- function(values, rownames_vec) {
@@ -527,33 +468,6 @@ fuzzydid <- function(
   x <- x[is.finite(x)]
   if (length(x) == 0L) return(NA_real_)
   mean(x)
-}
-
-.safe_quantile <- function(x, p) {
-  x <- x[is.finite(x)]
-  if (length(x) == 0L) return(NA_real_)
-  stats::quantile(x, probs = p, names = FALSE, type = 1)
-}
-
-.recategorize_treatment <- function(d, newcateg) {
-  d <- as.numeric(d)
-  if (is.null(newcateg)) return(d)
-
-  min_d <- min(d, na.rm = TRUE)
-  max_d <- max(d, na.rm = TRUE)
-
-  if (newcateg[[1L]] < min_d || newcateg[[1L]] >= max_d) {
-    stop("First `newcateg` value must be >= min(D) and < max(D).", call. = FALSE)
-  }
-  if (newcateg[[length(newcateg)]] < max_d) {
-    stop("Last `newcateg` value must be >= max(D).", call. = FALSE)
-  }
-
-  out <- rep.int(NA_real_, length(d))
-  for (i in seq_along(d)) {
-    out[[i]] <- which(d[[i]] <= newcateg)[[1L]]
-  }
-  as.numeric(out)
 }
 
 .counterfactual_quantile_map <- function(y_target, y_d00, y_d01) {
@@ -593,100 +507,6 @@ fuzzydid <- function(
 .is_binary <- function(x) {
   ux <- sort(unique(x[!is.na(x)]))
   length(ux) == 2L
-}
-
-.validate_group_values <- function(df, group, group_forward) {
-  if (is.null(group_forward)) {
-    bad <- !(df[[group]] %in% c(0, 1) | is.na(df[[group]]))
-    if (any(bad)) {
-      stop(
-        "When only one group variable is provided, it must take values in {0, 1, NA}.",
-        call. = FALSE
-      )
-    }
-    if (!any(df[[group]] == 0, na.rm = TRUE)) {
-      stop("The group variable must take value 0 for some observations.", call. = FALSE)
-    }
-    return(invisible(NULL))
-  }
-
-  for (nm in c(group, group_forward)) {
-    bad <- !(df[[nm]] %in% c(-3, -1, 0, 1) | is.na(df[[nm]]))
-    if (any(bad)) {
-      stop(sprintf("The group variable `%s` takes values outside {-3,-1,0,1,NA}.", nm), call. = FALSE)
-    }
-    if (!any(df[[nm]] == 0, na.rm = TRUE)) {
-      stop("The group variables must take value 0 for some observations.", call. = FALSE)
-    }
-  }
-
-  invisible(NULL)
-}
-
-.validate_native_request <- function(df, prepared, opts) {
-  time_vals <- sort(unique(df[[prepared$time]]))
-  if (length(time_vals) < 2L) {
-    stop("The fuzzydid package requires at least two time periods.", call. = FALSE)
-  }
-
-  if (is.null(prepared$group_forward) && length(time_vals) > 2L) {
-    stop(
-      "With more than two time periods, both backward and forward group identifiers must be used.",
-      call. = FALSE
-    )
-  }
-
-  .validate_group_values(df, prepared$group, prepared$group_forward)
-
-  d_vals <- as.numeric(df[[prepared$d_name]])
-  ncateg <- length(unique(d_vals[!is.na(d_vals)]))
-  if (ncateg < 2L) {
-    stop("The treatment variable must take at least two different values.", call. = FALSE)
-  }
-
-  has_cov <- length(prepared$covariates) > 0L
-  has_cont <- length(prepared$covariate_types$continuous) > 0L
-
-  if (has_cov && (opts$cic || opts$lqte)) {
-    stop("continuous and qualitative cannot be used in combination with cic or lqte.", call. = FALSE)
-  }
-
-  if (!has_cov && !is.null(opts$modelx)) {
-    stop("`modelx` requires covariates in the formula.", call. = FALSE)
-  }
-
-  if (opts$sieves && has_cov && !has_cont) {
-    stop("sieves requires continuous covariates.", call. = FALSE)
-  }
-
-  if (opts$lqte) {
-    if (ncateg != 2L) {
-      stop("Local quantile treatment effects can only be estimated with a binary treatment variable.", call. = FALSE)
-    }
-    if (length(time_vals) > 2L) {
-      stop("lqte cannot be used when there are more than two periods.", call. = FALSE)
-    }
-  }
-
-  if (opts$partial) {
-    if (has_cov) {
-      stop("partial can only be used without covariates.", call. = FALSE)
-    }
-    if (length(time_vals) > 2L) {
-      stop("partial can only be used with two time periods.", call. = FALSE)
-    }
-  }
-
-  if (!is.null(opts$modelx)) {
-    if (length(opts$modelx) == 2L && ncateg != 2L) {
-      stop(
-        "As the treatment variable takes more than two values, `modelx` must have three methods.",
-        call. = FALSE
-      )
-    }
-  }
-
-  invisible(NULL)
 }
 
 .build_pair_frames <- function(df, group, time, group_forward) {
@@ -1483,10 +1303,110 @@ fuzzydid <- function(
 }
 
 .estimate_all_native <- function(df, prepared, opts) {
-  .validate_native_request(df, prepared, opts)
+  time_vals <- sort(unique(df[[prepared$time]]))
+  if (length(time_vals) < 2L) {
+    stop("The fuzzydid package requires at least two time periods.", call. = FALSE)
+  }
 
-  df$.d_true_native <- as.numeric(df[[prepared$d_name]])
-  df$.d_tc_native <- .recategorize_treatment(df$.d_true_native, opts$newcateg)
+  if (is.null(prepared$group_forward) && length(time_vals) > 2L) {
+    stop(
+      "With more than two time periods, both backward and forward group identifiers must be used.",
+      call. = FALSE
+    )
+  }
+
+  if (is.null(prepared$group_forward)) {
+    bad_group <- !(df[[prepared$group]] %in% c(0, 1) | is.na(df[[prepared$group]]))
+    if (any(bad_group)) {
+      stop(
+        "When only one group variable is provided, it must take values in {0, 1, NA}.",
+        call. = FALSE
+      )
+    }
+    if (!any(df[[prepared$group]] == 0, na.rm = TRUE)) {
+      stop("The group variable must take value 0 for some observations.", call. = FALSE)
+    }
+  } else {
+    for (nm in c(prepared$group, prepared$group_forward)) {
+      bad_group <- !(df[[nm]] %in% c(-3, -1, 0, 1) | is.na(df[[nm]]))
+      if (any(bad_group)) {
+        stop(
+          sprintf("The group variable `%s` takes values outside {-3,-1,0,1,NA}.", nm),
+          call. = FALSE
+        )
+      }
+      if (!any(df[[nm]] == 0, na.rm = TRUE)) {
+        stop("The group variables must take value 0 for some observations.", call. = FALSE)
+      }
+    }
+  }
+
+  d_vals <- as.numeric(df[[prepared$d_name]])
+  ncateg <- length(unique(d_vals[!is.na(d_vals)]))
+  if (ncateg < 2L) {
+    stop("The treatment variable must take at least two different values.", call. = FALSE)
+  }
+
+  has_cov <- length(prepared$covariates) > 0L
+  has_cont <- length(prepared$covariate_types$continuous) > 0L
+
+  if (has_cov && (opts$cic || opts$lqte)) {
+    stop("continuous and qualitative cannot be used in combination with cic or lqte.", call. = FALSE)
+  }
+
+  if (!has_cov && !is.null(opts$modelx)) {
+    stop("`modelx` requires covariates in the formula.", call. = FALSE)
+  }
+
+  if (opts$sieves && has_cov && !has_cont) {
+    stop("sieves requires continuous covariates.", call. = FALSE)
+  }
+
+  if (opts$lqte) {
+    if (ncateg != 2L) {
+      stop("Local quantile treatment effects can only be estimated with a binary treatment variable.", call. = FALSE)
+    }
+    if (length(time_vals) > 2L) {
+      stop("lqte cannot be used when there are more than two periods.", call. = FALSE)
+    }
+  }
+
+  if (opts$partial) {
+    if (has_cov) {
+      stop("partial can only be used without covariates.", call. = FALSE)
+    }
+    if (length(time_vals) > 2L) {
+      stop("partial can only be used with two time periods.", call. = FALSE)
+    }
+  }
+
+  if (!is.null(opts$modelx) && length(opts$modelx) == 2L && ncateg != 2L) {
+    stop(
+      "As the treatment variable takes more than two values, `modelx` must have three methods.",
+      call. = FALSE
+    )
+  }
+
+  df$.d_true_native <- d_vals
+  if (is.null(opts$newcateg)) {
+    df$.d_tc_native <- d_vals
+  } else {
+    min_d <- min(d_vals, na.rm = TRUE)
+    max_d <- max(d_vals, na.rm = TRUE)
+
+    if (opts$newcateg[[1L]] < min_d || opts$newcateg[[1L]] >= max_d) {
+      stop("First `newcateg` value must be >= min(D) and < max(D).", call. = FALSE)
+    }
+    if (opts$newcateg[[length(opts$newcateg)]] < max_d) {
+      stop("Last `newcateg` value must be >= max(D).", call. = FALSE)
+    }
+
+    d_tc <- rep.int(NA_real_, length(d_vals))
+    for (i in seq_along(d_vals)) {
+      d_tc[[i]] <- which(d_vals[[i]] <= opts$newcateg)[[1L]]
+    }
+    df$.d_tc_native <- as.numeric(d_tc)
+  }
 
   pair_frames <- .build_pair_frames(
     df = df,
@@ -1720,54 +1640,11 @@ fuzzydid <- function(
   list(se = as.numeric(se), ci = ci)
 }
 
-.calc_boot_vcov <- function(reps_late, reps_lqte) {
-  reps <- NULL
-  if (!is.null(reps_late) && ncol(reps_late) > 0L) {
-    reps <- reps_late
-  }
-  if (!is.null(reps_lqte) && ncol(reps_lqte) > 0L) {
-    lqte_reps <- reps_lqte
-    colnames(lqte_reps) <- paste0("LQTE_", colnames(lqte_reps))
-    reps <- if (is.null(reps)) lqte_reps else cbind(reps, lqte_reps)
-  }
-  if (is.null(reps) || ncol(reps) == 0L) {
-    return(NULL)
-  }
-
-  reps <- .recode_bootstrap_sentinel(reps)
-  stats::cov(reps, use = "pairwise.complete.obs")
-}
-
 .recode_bootstrap_sentinel <- function(x) {
   if (is.null(x)) return(x)
   boot_sentinel <- 1000000000000000
   x[x == boot_sentinel | x == -boot_sentinel] <- NA_real_
   x
-}
-
-.compute_counts <- function(df, prepared) {
-  n11 <- NA_integer_
-  n10 <- NA_integer_
-  n01 <- NA_integer_
-  n00 <- NA_integer_
-
-  if (is.null(prepared$group_forward)) {
-    g_vals <- sort(unique(df[[prepared$group]]))
-    t_vals <- sort(unique(df[[prepared$time]]))
-
-    if (length(g_vals) == 2L && length(t_vals) == 2L && all(g_vals %in% c(0, 1))) {
-      g0 <- g_vals[[1L]]
-      g1 <- g_vals[[2L]]
-      t0 <- t_vals[[1L]]
-      t1 <- t_vals[[2L]]
-      n11 <- sum(df[[prepared$group]] == g1 & df[[prepared$time]] == t1)
-      n10 <- sum(df[[prepared$group]] == g1 & df[[prepared$time]] == t0)
-      n01 <- sum(df[[prepared$group]] == g0 & df[[prepared$time]] == t1)
-      n00 <- sum(df[[prepared$group]] == g0 & df[[prepared$time]] == t0)
-    }
-  }
-
-  list(n11 = n11, n10 = n10, n01 = n01, n00 = n00)
 }
 
 .run_native_backend <- function(prepared, opts) {
@@ -1809,7 +1686,20 @@ fuzzydid <- function(
     n_reps <- bt$n_reps
     n_misreps <- bt$n_misreps
     share_failures <- bt$share_failures
-    vcov_mat <- .calc_boot_vcov(bt$reps_late, bt$reps_lqte)
+    vcov_reps <- NULL
+    if (!is.null(bt$reps_late) && ncol(bt$reps_late) > 0L) {
+      vcov_reps <- bt$reps_late
+    }
+    if (!is.null(bt$reps_lqte) && ncol(bt$reps_lqte) > 0L) {
+      lqte_reps <- bt$reps_lqte
+      colnames(lqte_reps) <- paste0("LQTE_", colnames(lqte_reps))
+      vcov_reps <- if (is.null(vcov_reps)) lqte_reps else cbind(vcov_reps, lqte_reps)
+    }
+    if (!is.null(vcov_reps) && ncol(vcov_reps) > 0L) {
+      vcov_reps <- .recode_bootstrap_sentinel(vcov_reps)
+      vcov_mat <- stats::cov(vcov_reps, use = "pairwise.complete.obs")
+    }
+
     late_boot <- .calc_boot_summary(bt$reps_late)
     late$std.error <- late_boot$se
     if (length(late_boot$se) > 0L) {
@@ -1873,7 +1763,27 @@ fuzzydid <- function(
     }
   }
 
-  counts <- .compute_counts(df, prepared)
+  n11 <- NA_integer_
+  n10 <- NA_integer_
+  n01 <- NA_integer_
+  n00 <- NA_integer_
+
+  if (is.null(prepared$group_forward)) {
+    g_vals <- sort(unique(df[[prepared$group]]))
+    t_vals <- sort(unique(df[[prepared$time]]))
+
+    if (length(g_vals) == 2L && length(t_vals) == 2L && all(g_vals %in% c(0, 1))) {
+      g0 <- g_vals[[1L]]
+      g1 <- g_vals[[2L]]
+      t0 <- t_vals[[1L]]
+      t1 <- t_vals[[2L]]
+      n11 <- sum(df[[prepared$group]] == g1 & df[[prepared$time]] == t1)
+      n10 <- sum(df[[prepared$group]] == g1 & df[[prepared$time]] == t0)
+      n01 <- sum(df[[prepared$group]] == g0 & df[[prepared$time]] == t1)
+      n00 <- sum(df[[prepared$group]] == g0 & df[[prepared$time]] == t0)
+    }
+  }
+
   tag_mask <- if (opts$tagobs) prepared$mask else NULL
 
   list(
@@ -1884,10 +1794,10 @@ fuzzydid <- function(
     vcov = vcov_mat,
     tagobs = tag_mask,
     n = nrow(df),
-    n11 = counts$n11,
-    n10 = counts$n10,
-    n01 = counts$n01,
-    n00 = counts$n00,
+    n11 = n11,
+    n10 = n10,
+    n01 = n01,
+    n00 = n00,
     sieveorder_selected = point$sieveorder_selected,
     n_reps = n_reps,
     n_misreps = n_misreps,
