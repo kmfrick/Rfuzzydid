@@ -495,8 +495,7 @@ fuzzydid <- function(
 
   probs <- .cdf_at(y_from, y_target)
   out <- stats::quantile(y_to, probs = probs, names = FALSE, type = 1)
-  lower <- min(y_to, na.rm = TRUE) - max(1, diff(range(y_to, na.rm = TRUE)))
-  out[probs <= 0] <- lower
+  out[probs <= 0] <- -Inf
   as.numeric(out)
 }
 
@@ -1060,6 +1059,8 @@ fuzzydid <- function(
 
   m_y10 <- .fit_predict_mean(y[idx10], x_y[idx10, , drop = FALSE], x_y[idx11, , drop = FALSE], methods$y)
   m_d10 <- .fit_predict_mean(d_true[idx10], x_d[idx10, , drop = FALSE], x_d[idx11, , drop = FALSE], methods$d1)
+  special_case <- length(unique(d_tc[g == 0])) == 1L
+  need_did_components <- opts$did || (opts$tc && special_case)
 
   out <- list(
     did_num = NA_real_,
@@ -1070,7 +1071,7 @@ fuzzydid <- function(
     tc_sup = NA_real_,
     cic_num = NA_real_,
     cic_den = NA_real_,
-    special_case = FALSE,
+    special_case = special_case,
     sieveorder_selected = c(
       outcome = resolved_sieve$y_order,
       treatment = resolved_sieve$d_order
@@ -1078,7 +1079,7 @@ fuzzydid <- function(
     sieveorder_selected_by_cv = isTRUE(resolved_sieve$selected_by_cv)
   )
 
-  if (opts$did) {
+  if (need_did_components) {
     m_y01 <- .fit_predict_mean(y[idx01], x_y[idx01, , drop = FALSE], x_y[idx11, , drop = FALSE], methods$y)
     m_y00 <- .fit_predict_mean(y[idx00], x_y[idx00, , drop = FALSE], x_y[idx11, , drop = FALSE], methods$y)
 
@@ -1090,9 +1091,6 @@ fuzzydid <- function(
   }
 
   if (opts$tc) {
-    special_case <- length(unique(d_tc[g == 0])) == 1L
-    out$special_case <- special_case
-
     if (special_case) {
       if (is.finite(out$did_num) && is.finite(out$did_den)) {
         out$tc_num <- out$did_num
@@ -1154,7 +1152,6 @@ fuzzydid <- function(
 .estimate_lqte_no_cov <- function(sub_df, y_name, d_true_name) {
   y <- as.numeric(sub_df[[y_name]])
   d_true <- as.numeric(sub_df[[d_true_name]])
-  d <- as.integer(factor(d_true, levels = sort(unique(d_true))))
   g <- as.integer(sub_df$.g_binary)
   t <- as.integer(sub_df$.t_binary)
 
@@ -1164,12 +1161,20 @@ fuzzydid <- function(
   idx00 <- g == 0 & t == 0
 
   q_grid <- seq(0.05, 0.95, by = 0.05)
+  d_support <- sort(unique(d_true[!is.na(d_true)]))
+  if (length(d_support) != 2L) {
+    out <- rep(NA_real_, length(q_grid))
+    names(out) <- sprintf("%.2f", q_grid)
+    return(out)
+  }
 
-  mean_d11 <- .safe_mean(d_true[idx11])
-  mean_d10 <- .safe_mean(d_true[idx10])
+  d <- as.integer(d_true == d_support[[2L]])
+
+  mean_d11 <- .safe_mean(d[idx11])
+  mean_d10 <- .safe_mean(d[idx10])
   den <- mean_d11 - mean_d10
 
-  if (!is.finite(den) || den == 0 || length(unique(d)) != 2L) {
+  if (!is.finite(den) || den == 0) {
     out <- rep(NA_real_, length(q_grid))
     names(out) <- sprintf("%.2f", q_grid)
     return(out)
@@ -1180,14 +1185,16 @@ fuzzydid <- function(
   max_y11 <- max(y[idx11], na.rm = TRUE) - 0.001
 
   q_mat <- matrix(NA_real_, nrow = length(q_grid), ncol = 2L)
+  status_values <- c(0L, 1L)
 
-  for (status in 1:2) {
+  for (status_pos in seq_along(status_values)) {
+    status <- status_values[[status_pos]]
     f_status <- rep(0, length(grid))
 
     y11 <- y[d == status & idx11]
     if (length(y11) > 0L) {
       f_11 <- .cdf_at(y11, grid)
-      if (status == 1L) {
+      if (status == 0L) {
         f_status <- (1 - mean_d11) * f_11 / (1 - mean_d11 - (1 - mean_d10))
       } else {
         f_status <- mean_d11 * f_11 / den
@@ -1209,7 +1216,7 @@ fuzzydid <- function(
       y_to = y00
     )
     f_10 <- .cdf_at(y10, inv_q)
-    if (status == 1L) {
+    if (status == 0L) {
       f_status <- f_status - (1 - mean_d10) * f_10 / (1 - mean_d11 - (1 - mean_d10))
     } else {
       f_status <- f_status - mean_d10 * f_10 / den
@@ -1220,7 +1227,7 @@ fuzzydid <- function(
 
     for (i in seq_along(q_grid)) {
       idx <- which(f_status >= q_grid[[i]])
-      q_mat[[i, status]] <- if (length(idx) == 0L) NA_real_ else min(grid[idx])
+      q_mat[[i, status_pos]] <- if (length(idx) == 0L) NA_real_ else min(grid[idx])
     }
   }
 
@@ -1236,21 +1243,36 @@ fuzzydid <- function(
   as.numeric(val[[1L]])
 }
 
+.extract_weight <- function(x) {
+  val <- x[["aggregation_weight"]]
+  if (is.null(val) || length(val) == 0L || !is.finite(val[[1L]])) {
+    return(1)
+  }
+  as.numeric(val[[1L]])
+}
+
+.den_orientation <- function(den) {
+  ifelse(den < 0, -1, 1)
+}
+
 .aggregate_late <- function(pair_results, opts) {
   late <- numeric(0)
+  weights <- vapply(pair_results, .extract_weight, numeric(1))
 
   if (opts$did) {
     did_num <- vapply(pair_results, .extract_scalar, numeric(1), name = "did_num")
     did_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "did_den")
-    keep <- is.finite(did_num) & is.finite(did_den) & did_den != 0
+    keep <- is.finite(did_num) & is.finite(did_den) & did_den != 0 & weights > 0
     if (!any(keep)) {
       stop("Given the data structure, impossible to estimate DID.", call. = FALSE)
     }
 
+    orient <- .den_orientation(did_den[keep])
     if (opts$numerator) {
       late[["DID_num"]] <- sum(did_num[keep])
     } else {
-      late[["W_DID"]] <- sum(did_num[keep]) / sum(did_den[keep])
+      late[["W_DID"]] <- sum(weights[keep] * orient * did_num[keep]) /
+        sum(weights[keep] * orient * did_den[keep])
     }
   }
 
@@ -1259,27 +1281,30 @@ fuzzydid <- function(
       tc_inf <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_inf")
       tc_sup <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_sup")
       tc_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_den")
-      keep <- is.finite(tc_inf) & is.finite(tc_sup) & is.finite(tc_den) & tc_den != 0
+      keep <- is.finite(tc_inf) & is.finite(tc_sup) & is.finite(tc_den) & tc_den != 0 & weights > 0
       if (!any(keep)) {
         stop("Given the data structure, partial cannot be estimated.", call. = FALSE)
       }
-      inf_est <- sum(tc_inf[keep] * tc_den[keep]) / sum(tc_den[keep])
-      sup_est <- sum(tc_sup[keep] * tc_den[keep]) / sum(tc_den[keep])
+      den_weight <- weights[keep] * abs(tc_den[keep])
+      inf_est <- sum(tc_inf[keep] * den_weight) / sum(den_weight)
+      sup_est <- sum(tc_sup[keep] * den_weight) / sum(den_weight)
       bounds <- sort(c(inf_est, sup_est))
       late[["TC_inf"]] <- bounds[[1L]]
       late[["TC_sup"]] <- bounds[[2L]]
     } else {
       tc_num <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_num")
       tc_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_den")
-      keep <- is.finite(tc_num) & is.finite(tc_den) & tc_den != 0
+      keep <- is.finite(tc_num) & is.finite(tc_den) & tc_den != 0 & weights > 0
       if (!any(keep)) {
         stop("Given the data structure, impossible to estimate TC.", call. = FALSE)
       }
 
+      orient <- .den_orientation(tc_den[keep])
       if (opts$numerator) {
         late[["TC_num"]] <- sum(tc_num[keep])
       } else {
-        late[["W_TC"]] <- sum(tc_num[keep]) / sum(tc_den[keep])
+        late[["W_TC"]] <- sum(weights[keep] * orient * tc_num[keep]) /
+          sum(weights[keep] * orient * tc_den[keep])
       }
     }
   }
@@ -1287,15 +1312,17 @@ fuzzydid <- function(
   if (opts$cic) {
     cic_num <- vapply(pair_results, .extract_scalar, numeric(1), name = "cic_num")
     cic_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "cic_den")
-    keep <- is.finite(cic_num) & is.finite(cic_den) & cic_den != 0
+    keep <- is.finite(cic_num) & is.finite(cic_den) & cic_den != 0 & weights > 0
     if (!any(keep)) {
       stop("Given the data structure, impossible to estimate CIC.", call. = FALSE)
     }
 
+    orient <- .den_orientation(cic_den[keep])
     if (opts$numerator) {
       late[["CIC_num"]] <- sum(cic_num[keep])
     } else {
-      late[["W_CIC"]] <- sum(cic_num[keep]) / sum(cic_den[keep])
+      late[["W_CIC"]] <- sum(weights[keep] * orient * cic_num[keep]) /
+        sum(weights[keep] * orient * cic_den[keep])
     }
   }
 
@@ -1473,6 +1500,7 @@ fuzzydid <- function(
       est$pair_id <- sub$pair_id
       est$sign <- sub$sign
       est$counts <- sub$counts
+      est$aggregation_weight <- as.numeric(sub$counts[["n11"]] + sub$counts[["n10"]])
       pair_results[[length(pair_results) + 1L]] <- est
       if (!is.null(est$sieveorder_selected)) {
         sieve_selection <- est$sieveorder_selected

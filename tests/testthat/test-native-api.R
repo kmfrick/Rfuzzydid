@@ -54,6 +54,46 @@ make_group_forward_fixture <- function() {
   )
 }
 
+make_covariate_tc_special_fixture <- function() {
+  n_cell <- 30L
+
+  mk <- function(g, t, d_value) {
+    x <- seq(-1, 1, length.out = n_cell)
+    d <- rep.int(d_value, n_cell)
+    y <- 10 * t + 2 * d + 0.5 * x
+    data.frame(y = y, d = d, x = x, g = g, t = t)
+  }
+
+  rbind(
+    mk(0L, 0L, 0L),
+    mk(0L, 1L, 0L),
+    mk(1L, 0L, 0L),
+    mk(1L, 1L, 1L)
+  )
+}
+
+make_mixed_direction_fixture <- function() {
+  mk <- function(group_value, t, n_cell, d_value, tau) {
+    d <- rep.int(d_value, n_cell)
+    data.frame(
+      y = tau * d,
+      d = d,
+      gb = group_value,
+      gf = group_value,
+      t = t
+    )
+  }
+
+  rbind(
+    mk(0L, 0L, 20L, 0L, 0),
+    mk(0L, 1L, 20L, 0L, 0),
+    mk(1L, 0L, 10L, 0L, 1),
+    mk(1L, 1L, 10L, 1L, 1),
+    mk(-1L, 0L, 30L, 1L, 3),
+    mk(-1L, 1L, 30L, 0L, 3)
+  )
+}
+
 test_that("formula API works on native backend", {
   df <- make_native_fixture()
 
@@ -202,6 +242,19 @@ test_that("bootstrap summary drops Stata sentinel reps", {
   expect_equal(out$se, c(stats::sd(c(1, 3)), stats::sd(c(2, 4))), tolerance = 1e-12)
 })
 
+test_that("counterfactual inverse maps below-support ranks to negative infinity", {
+  counterfactual_inverse_map <- getFromNamespace(".counterfactual_inverse_map", "Rfuzzydid")
+  out <- counterfactual_inverse_map(
+    y_target = -1,
+    y_from = c(0, 1),
+    y_to = c(10, 11)
+  )
+
+  expect_true(is.infinite(out))
+  expect_lt(out, 0)
+  expect_equal(mean(c(0, 1) <= out), 0)
+})
+
 test_that("group_forward supports multi-period DID/TC", {
   df <- make_group_forward_fixture()
 
@@ -220,6 +273,80 @@ test_that("group_forward supports multi-period DID/TC", {
   expect_true(all(c("W_DID", "W_TC") %in% fit$late$estimator))
 })
 
+test_that("aggregation weights and orients increasing and decreasing arms", {
+  df <- make_mixed_direction_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "gb",
+    group_forward = "gf",
+    time = "t",
+    did = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  did <- fit$late$estimate[fit$late$estimator == "W_DID"]
+  expect_equal(did, 2.5, tolerance = 1e-12)
+})
+
+test_that("numerator outputs retain reduced-form signs", {
+  df <- make_mixed_direction_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "gb",
+    group_forward = "gf",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    numerator = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  nums <- setNames(fit$late$estimate, fit$late$estimator)
+  expect_equal(nums[["DID_num"]], -2, tolerance = 1e-12)
+  expect_equal(nums[["TC_num"]], -2, tolerance = 1e-12)
+})
+
+test_that("numerator outputs are not scaled by cell counts", {
+  df <- make_native_fixture()
+  df_duplicated <- df[rep(seq_len(nrow(df)), each = 2L), ]
+  row.names(df_duplicated) <- NULL
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    numerator = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+  fit_duplicated <- fuzzydid(
+    data = df_duplicated,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    numerator = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  nums <- setNames(fit$late$estimate, fit$late$estimator)
+  nums_duplicated <- setNames(fit_duplicated$late$estimate, fit_duplicated$late$estimator)
+  expect_equal(nums_duplicated[names(nums)], nums, tolerance = 1e-12)
+})
+
 test_that("native backend supports lqte under binary two-period design", {
   df <- make_native_fixture()
 
@@ -235,6 +362,33 @@ test_that("native backend supports lqte under binary two-period design", {
 
   expect_false(is.null(fit$lqte))
   expect_identical(nrow(fit$lqte), 19L)
+})
+
+test_that("lqte is invariant to binary treatment labels", {
+  df <- make_native_fixture()
+  df_shifted <- df
+  df_shifted$d <- df_shifted$d + 1
+
+  fit_01 <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    lqte = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+  fit_12 <- fuzzydid(
+    data = df_shifted,
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    lqte = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_equal(fit_12$lqte$estimate, fit_01$lqte$estimate, tolerance = 1e-12)
 })
 
 test_that("partial returns TC bounds under valid design", {
@@ -343,6 +497,23 @@ test_that("covariates with modelx and sieves are supported for DID/TC", {
   )
 
   expect_true(all(c("W_DID", "W_TC") %in% fit_sieve$late$estimator))
+})
+
+test_that("covariate TC-only stable-control path applies the time correction", {
+  df <- make_covariate_tc_special_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d + x,
+    group = "g",
+    time = "t",
+    tc = TRUE,
+    nose = TRUE,
+    backend = "native"
+  )
+
+  expect_identical(fit$late$estimator, "W_TC")
+  expect_equal(fit$late$estimate, 2, tolerance = 1e-10)
 })
 
 test_that("sieveorder defaults to deterministic CV selection and supports legacy length-2", {
