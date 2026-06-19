@@ -31,7 +31,9 @@ Roodman's replication materials
 In the companion archive README
 ([droodman/Duflo-2001](https://github.com/droodman/Duflo-2001)), he notes that
 the main 1995 SUPAS file is "not contained in this repository" and links to
-that downloadable location.
+that downloadable location. Download `inpresdata.dta` from Roodman's
+[`droodman/Duflo2001`](https://github.com/droodman/Duflo2001/blob/main/inpresdata.dta)
+repository when running this vignette locally.
 
 # Data Preparation
 
@@ -40,6 +42,8 @@ that downloadable location.
 ```{r load-data}
 library(Rfuzzydid)
 
+# Download from:
+# https://raw.githubusercontent.com/droodman/Duflo2001/main/inpresdata.dta
 data_path <- "path/to/inpresdata.dta"
 raw <- foreign::read.dta(data_path)
 ```
