@@ -6,4 +6,5 @@ rv/
 *.Rcheck/
 *.tar.gz
 vignettes/*.html
+vignettes/stata-parity-*-fixture.dta
 vignettes/stata_parity_capture*.log

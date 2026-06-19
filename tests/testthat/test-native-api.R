@@ -106,7 +106,6 @@ test_that("formula API works on native backend", {
     tc = TRUE,
     cic = TRUE,
     nose = TRUE,
-    backend = "native",
     seed = 1
   )
 
@@ -126,8 +125,7 @@ test_that("summary, tidy, and glance methods expose stable outputs", {
     time = "t",
     did = TRUE,
     tc = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   invisible(capture.output(out <- summary(fit)))
@@ -164,8 +162,7 @@ test_that("bootstrap fit exposes coefficient intervals and covariance", {
     did = TRUE,
     tc = TRUE,
     breps = 10,
-    seed = 1,
-    backend = "native"
+    seed = 1
   )
 
   ci <- confint(fit)
@@ -194,8 +191,7 @@ test_that("treatment is explicit and robust to RHS ordering", {
     group = "g",
     time = "t",
     did = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   fit_explicit_2 <- fuzzydid(
@@ -205,8 +201,7 @@ test_that("treatment is explicit and robust to RHS ordering", {
     group = "g",
     time = "t",
     did = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_equal(fit_explicit_1$late$estimate, fit_explicit_2$late$estimate, tolerance = 1e-12)
@@ -218,8 +213,7 @@ test_that("treatment is explicit and robust to RHS ordering", {
       group = "g",
       time = "t",
       did = TRUE,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "Unable to infer treatment"
   )
@@ -266,8 +260,7 @@ test_that("group_forward supports multi-period DID/TC", {
     time = "t",
     did = TRUE,
     tc = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_true(all(c("W_DID", "W_TC") %in% fit$late$estimator))
@@ -283,8 +276,7 @@ test_that("aggregation weights and orients increasing and decreasing arms", {
     group_forward = "gf",
     time = "t",
     did = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   did <- fit$late$estimate[fit$late$estimator == "W_DID"]
@@ -303,8 +295,7 @@ test_that("numerator outputs retain reduced-form signs", {
     did = TRUE,
     tc = TRUE,
     numerator = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   nums <- setNames(fit$late$estimate, fit$late$estimator)
@@ -326,8 +317,7 @@ test_that("numerator outputs are not scaled by cell counts", {
     tc = TRUE,
     cic = TRUE,
     numerator = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
   fit_duplicated <- fuzzydid(
     data = df_duplicated,
@@ -338,8 +328,7 @@ test_that("numerator outputs are not scaled by cell counts", {
     tc = TRUE,
     cic = TRUE,
     numerator = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   nums <- setNames(fit$late$estimate, fit$late$estimator)
@@ -356,8 +345,7 @@ test_that("native backend supports lqte under binary two-period design", {
     group = "g",
     time = "t",
     lqte = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_false(is.null(fit$lqte))
@@ -375,8 +363,7 @@ test_that("lqte is invariant to binary treatment labels", {
     group = "g",
     time = "t",
     lqte = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
   fit_12 <- fuzzydid(
     data = df_shifted,
@@ -384,8 +371,7 @@ test_that("lqte is invariant to binary treatment labels", {
     group = "g",
     time = "t",
     lqte = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_equal(fit_12$lqte$estimate, fit_01$lqte$estimate, tolerance = 1e-12)
@@ -401,8 +387,7 @@ test_that("partial returns TC bounds under valid design", {
     time = "t",
     tc = TRUE,
     partial = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_identical(fit$late$estimator, c("TC_inf", "TC_sup"))
@@ -420,8 +405,7 @@ test_that("eqtest supports point contrasts when standard errors are skipped", {
     tc = TRUE,
     cic = TRUE,
     eqtest = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_s3_class(fit$eqtest, "data.frame")
@@ -444,8 +428,7 @@ test_that("sieves is a no-op without formula covariates", {
     tc = TRUE,
     cic = TRUE,
     lqte = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   fit_sieves <- fuzzydid(
@@ -458,8 +441,7 @@ test_that("sieves is a no-op without formula covariates", {
     cic = TRUE,
     lqte = TRUE,
     sieves = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_equal(fit_sieves$late$estimate, fit_plain$late$estimate)
@@ -478,8 +460,7 @@ test_that("covariates with modelx and sieves are supported for DID/TC", {
     did = TRUE,
     tc = TRUE,
     modelx = c("ols", "ols"),
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_true(all(c("W_DID", "W_TC") %in% fit_modelx$late$estimator))
@@ -492,8 +473,7 @@ test_that("covariates with modelx and sieves are supported for DID/TC", {
     did = TRUE,
     tc = TRUE,
     sieves = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_true(all(c("W_DID", "W_TC") %in% fit_sieve$late$estimator))
@@ -508,8 +488,7 @@ test_that("covariate TC-only stable-control path applies the time correction", {
     group = "g",
     time = "t",
     tc = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_identical(fit$late$estimator, "W_TC")
@@ -527,8 +506,7 @@ test_that("sieveorder defaults to deterministic CV selection and supports legacy
     did = TRUE,
     tc = TRUE,
     sieves = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   fit_cv_2 <- fuzzydid(
@@ -539,8 +517,7 @@ test_that("sieveorder defaults to deterministic CV selection and supports legacy
     did = TRUE,
     tc = TRUE,
     sieves = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_false(is.null(fit_cv_1$sieveorder_selected))
@@ -557,8 +534,7 @@ test_that("sieveorder defaults to deterministic CV selection and supports legacy
       tc = TRUE,
       sieves = TRUE,
       sieveorder = c(2, 2),
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "deprecated"
   )
@@ -575,8 +551,7 @@ test_that("strict restrictions mirror Stata-style constraints", {
       time = "t",
       tc = TRUE,
       partial = TRUE,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "without covariates"
   )
@@ -591,8 +566,7 @@ test_that("strict restrictions mirror Stata-style constraints", {
       tc = TRUE,
       sieves = TRUE,
       sieveorder = 1,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     ">= 2"
   )
@@ -607,8 +581,7 @@ test_that("strict restrictions mirror Stata-style constraints", {
       tc = TRUE,
       sieves = TRUE,
       sieveorder = 200,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "min\\(4800, floor\\(n/5\\)\\)"
   )
@@ -621,8 +594,7 @@ test_that("strict restrictions mirror Stata-style constraints", {
       group_forward = "gf",
       time = "t",
       lqte = TRUE,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "more than two periods"
   )
@@ -634,8 +606,7 @@ test_that("strict restrictions mirror Stata-style constraints", {
       group = "g",
       time = "t",
       did = TRUE,
-      breps = 2.5,
-      backend = "native"
+      breps = 2.5
     ),
     "integer scalar >= 2"
   )
@@ -647,8 +618,7 @@ test_that("strict restrictions mirror Stata-style constraints", {
       group = "g",
       time = "t",
       did = 1,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "`did` must be TRUE or FALSE",
     fixed = TRUE
@@ -665,8 +635,7 @@ test_that("explicit breps is ignored when standard errors are skipped", {
     time = "t",
     did = TRUE,
     breps = 2L,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_s3_class(fit, "fuzzydid")
@@ -685,8 +654,7 @@ test_that("group_forward value check message includes -3", {
       group_forward = "gf",
       time = "t",
       did = TRUE,
-      nose = TRUE,
-      backend = "native"
+      nose = TRUE
     ),
     "\\{-3,-1,0,1,NA\\}"
   )
@@ -704,8 +672,7 @@ test_that("tagobs mask is returned without mutating input data", {
     time = "t",
     did = TRUE,
     nose = TRUE,
-    tagobs = TRUE,
-    backend = "native"
+    tagobs = TRUE
   )
 
   expect_type(fit$tagobs, "logical")
@@ -768,8 +735,7 @@ test_that("missing values are complete-case filtered and exposed by tagobs", {
     time = "t",
     did = TRUE,
     nose = TRUE,
-    tagobs = TRUE,
-    backend = "native"
+    tagobs = TRUE
   )
 
   expect_identical(fit$n, nrow(df) - 2L)
@@ -789,8 +755,7 @@ test_that("exact covariate relationships remain computable", {
     time = "t",
     did = TRUE,
     tc = TRUE,
-    nose = TRUE,
-    backend = "native"
+    nose = TRUE
   )
 
   expect_true(all(is.finite(fit$late$estimate)))

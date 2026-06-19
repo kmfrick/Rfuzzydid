@@ -62,7 +62,6 @@ test_that("Rfuzzydid matches frozen Stata parity goldens on core estimates and c
       tc = TRUE,
       cic = TRUE,
       nose = TRUE,
-      backend = "native",
       seed = 1
     )
   }))
@@ -90,7 +89,6 @@ test_that("native lqte tracks the frozen Stata parity fixture", {
     time = "t",
     lqte = TRUE,
     nose = TRUE,
-    backend = "native",
     seed = 1
   )
 
@@ -109,7 +107,6 @@ test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
     tc = TRUE,
     partial = TRUE,
     nose = TRUE,
-    backend = "native",
     seed = 1
   )
 
@@ -134,7 +131,6 @@ test_that("clustered bootstrap diagnostics are reproducible under a fixed user s
     cic = TRUE,
     cluster = "cl",
     breps = 20,
-    backend = "native",
     seed = 1
   )
   fit_again <- fuzzydid(
@@ -147,7 +143,6 @@ test_that("clustered bootstrap diagnostics are reproducible under a fixed user s
     cic = TRUE,
     cluster = "cl",
     breps = 20,
-    backend = "native",
     seed = 1
   )
 

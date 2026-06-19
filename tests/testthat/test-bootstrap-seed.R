@@ -25,8 +25,7 @@ test_that("bootstrap seed is optional and user controlled", {
     group = "g",
     time = "t",
     did = TRUE,
-    breps = 10,
-    backend = "native"
+    breps = 10
   )
 
   set.seed(123)
@@ -37,7 +36,6 @@ test_that("bootstrap seed is optional and user controlled", {
     time = "t",
     did = TRUE,
     breps = 10,
-    backend = "native",
     seed = 1
   )
 
@@ -49,7 +47,6 @@ test_that("bootstrap seed is optional and user controlled", {
     time = "t",
     did = TRUE,
     breps = 10,
-    backend = "native",
     seed = 1
   )
 

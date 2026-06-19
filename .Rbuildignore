@@ -8,6 +8,7 @@
 ^\.vagrant$
 ^Vagrantfile$
 ^vignettes/.*\.html$
+^vignettes/stata-parity-.*-fixture\.dta$
 ^vignettes/stata_parity_capture.*\.log$
 ^CONTRIBUTING\.md$
 ^parity\.log$

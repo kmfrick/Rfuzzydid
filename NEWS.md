@@ -1,4 +1,4 @@
-# Rfuzzydid 1.1.2
+# Rfuzzydid 1.2
 
 - Added SRR standards documentation and related package-review metadata.
 - Improved the `plot()` method and examples for stable non-interactive checks.

@@ -37,7 +37,6 @@
 #'   A length-2 vector is accepted for backward compatibility and interpreted
 #'   as `(outcome_order, treatment_order)`.
 #' @param tagobs Logical; return logical mask of observations used.
-#' @param backend One of `"auto"` or `"native"`.
 #' @param seed Optional integer seed used for bootstrap resampling when
 #'   \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the
 #'   current RNG state. Supply a value to make bootstrap standard errors,
@@ -136,7 +135,6 @@ fuzzydid <- function(
   sieves = FALSE,
   sieveorder = NULL,
   tagobs = FALSE,
-  backend = c("auto", "native"),
   seed = NULL,
   treatment = NULL
 ) {
@@ -148,7 +146,6 @@ fuzzydid <- function(
     stop("`formula` must be a formula like y ~ d + x1 + x2.", call. = FALSE)
   }
 
-  backend <- match.arg(backend)
   logical_opts <- list(
     did = did,
     tc = tc,
@@ -485,7 +482,7 @@ fuzzydid <- function(
   if (length(sample) == 0L) {
     return(rep(NA_real_, length(x)))
   }
-  vapply(x, function(xx) mean(sample <= xx), numeric(1))
+  stats::ecdf(sample)(x)
 }
 
 .counterfactual_inverse_map <- function(y_target, y_from, y_to) {
@@ -1428,11 +1425,12 @@ fuzzydid <- function(
       stop("Last `newcateg` value must be >= max(D).", call. = FALSE)
     }
 
-    d_tc <- rep.int(NA_real_, length(d_vals))
-    for (i in seq_along(d_vals)) {
-      d_tc[[i]] <- which(d_vals[[i]] <= opts$newcateg)[[1L]]
-    }
-    df$.d_tc_native <- as.numeric(d_tc)
+    df$.d_tc_native <- as.numeric(cut(
+      d_vals,
+      breaks = c(-Inf, opts$newcateg),
+      labels = FALSE,
+      right = TRUE
+    ))
   }
 
   pair_frames <- .build_pair_frames(
@@ -1877,19 +1875,19 @@ summary.fuzzydid <- function(object, ...) {
 
   if (!is.null(object$late) && nrow(object$late) > 0L) {
     cat("LATE estimators\n")
-    print(knitr::kable(object$late, row.names = FALSE))
+    print(object$late, row.names = FALSE)
   } else {
     cat("No LATE estimators returned.\n")
   }
 
   if (!is.null(object$eqtest) && nrow(object$eqtest) > 0L) {
     cat("\nEquality tests\n")
-    print(knitr::kable(object$eqtest, row.names = FALSE))
+    print(object$eqtest, row.names = FALSE)
   }
 
   if (!is.null(object$lqte) && nrow(object$lqte) > 0L) {
     cat("\nLQTE estimators\n")
-    print(knitr::kable(object$lqte, row.names = FALSE))
+    print(object$lqte, row.names = FALSE)
   }
 
   invisible(object)

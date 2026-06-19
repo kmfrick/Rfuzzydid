@@ -25,7 +25,6 @@ fuzzydid(
   sieves = FALSE,
   sieveorder = NULL,
   tagobs = FALSE,
-  backend = c("auto", "native"),
   seed = NULL,
   treatment = NULL
 )
@@ -79,8 +78,6 @@ A length-2 vector is accepted for backward compatibility and interpreted
 as \verb{(outcome_order, treatment_order)}.}
 
 \item{tagobs}{Logical; return logical mask of observations used.}
-
-\item{backend}{One of \code{"auto"} or \code{"native"}.}
 
 \item{seed}{Optional integer seed used for bootstrap resampling when
 \code{nose = FALSE}. If \code{NULL} (default), bootstrap draws use the

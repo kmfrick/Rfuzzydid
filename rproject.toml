@@ -20,8 +20,5 @@ dependencies = [
     "rmarkdown",
     "testthat",
     "haven",
-    "modelsummary",
-    "pkgload",
-    "broom",
     "foreign",
 ]

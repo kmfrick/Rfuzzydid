@@ -11,7 +11,7 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = requireNamespace("foreign", quietly = TRUE)
+  eval = FALSE
 )
 ```
 
@@ -24,8 +24,9 @@ The key idea is to recover the wage return to schooling from cohort-by-district
 variation in treatment intensity, using the fuzzy DID estimators in
 de Chaisemartin and D'Haultfoeuille (2018).
 
-The dataset is the bundled `inpresdata.dta` file in `inst/extdata`. The file
-originates from David Roodman's replication materials
+The replication starts from `inpresdata.dta`, which is not bundled with the
+package to keep the source tarball small. The file originates from David
+Roodman's replication materials
 ([droodman/Duflo-2001](https://github.com/droodman/Duflo-2001)).
 In the companion archive README
 ([droodman/Duflo-2001](https://github.com/droodman/Duflo-2001)), he notes that
@@ -39,45 +40,7 @@ that downloadable location.
 ```{r load-data}
 library(Rfuzzydid)
 
-# Resolve package root when rendering inside source tree
-find_local_pkg_dir <- function() {
-  roots <- c(".", "..", "../..")
-
-  for (root in roots) {
-    pkg_desc <- file.path(root, "pkg", "DESCRIPTION")
-    root_desc <- file.path(root, "DESCRIPTION")
-
-    if (file.exists(pkg_desc)) {
-      return(file.path(root, "pkg"))
-    }
-
-    if (file.exists(root_desc)) {
-      desc <- tryCatch(read.dcf(root_desc), error = function(e) NULL)
-      if (!is.null(desc) && "Package" %in% colnames(desc) && identical(desc[1, "Package"], "Rfuzzydid")) {
-        return(root)
-      }
-    }
-  }
-
-  NULL
-}
-
-# First try installed package location, then source-tree fallback
-data_path <- system.file("extdata", "inpresdata.dta", package = "Rfuzzydid")
-if (identical(data_path, "")) {
-  local_pkg_dir <- find_local_pkg_dir()
-  local_path <- if (!is.null(local_pkg_dir)) {
-    file.path(local_pkg_dir, "inst", "extdata", "inpresdata.dta")
-  } else {
-    ""
-  }
-
-  if (file.exists(local_path)) {
-    data_path <- local_path
-  } else {
-    stop("Bundled dataset 'inpresdata.dta' was not found in installed package or source-tree extdata.")
-  }
-}
+data_path <- "path/to/inpresdata.dta"
 raw <- foreign::read.dta(data_path)
 ```
 
@@ -156,8 +119,7 @@ fit_inc <- fuzzydid(
   tc = TRUE,
   cic = TRUE,
   newcateg = c(5, 8, 11, 14, 1000),
-  nose = TRUE,
-  backend = "native"
+  nose = TRUE
 )
 
 knitr::kable(fit_inc$late)
@@ -178,8 +140,7 @@ fit_dec <- fuzzydid(
   tc = TRUE,
   cic = TRUE,
   newcateg = c(5, 8, 11, 14, 1000),
-  nose = TRUE,
-  backend = "native"
+  nose = TRUE
 )
 
 knitr::kable(fit_dec$late)

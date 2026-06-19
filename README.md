@@ -44,7 +44,6 @@ fuzzydid(
   sieves = FALSE,
   sieveorder = NULL,
   tagobs = FALSE,
-  backend = c("auto", "native"),
   seed = NULL,
   treatment = NULL
 )
@@ -121,7 +120,6 @@ When covariates are included and neither `modelx` nor `sieves` is specified, all
 **Other:**
 
 - `tagobs`: Logical; return a logical mask of observations used by `fuzzydid()`.
-- `backend`: One of `"auto"` or `"native"`.
 - `seed`: Optional integer seed for bootstrap resampling when `nose = FALSE`.
   The default `NULL` uses the current R RNG state; supply a seed for
   reproducible standard errors, confidence intervals, and bootstrap diagnostics.
