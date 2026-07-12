@@ -10,7 +10,13 @@
 
 ## Installation
 
-Install the development version from GitHub with:
+Install the latest stable release from CRAN:
+
+```r
+install.packages("Rfuzzydid")
+```
+
+For the development version:
 
 ```r
 install.packages("remotes")
