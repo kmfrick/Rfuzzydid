@@ -1,3 +1,8 @@
+# Rfuzzydid 1.2.1
+
+- `broom` is now in `Depends`, so `library(Rfuzzydid)` attaches it
+  automatically; `tidy()` and `glance()` work without a `broom::` prefix.
+
 # Rfuzzydid 1.2
 
 - Added SRR standards documentation and related package-review metadata.
