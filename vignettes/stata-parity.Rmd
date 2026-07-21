@@ -572,7 +572,7 @@ Equivalent Stata code:
 
 ```stata
 use "stata-parity-multiperiod-fixture.dta", clear
-fuzzydid y gb t d, groupf(gf) did tc
+fuzzydid y gb gf t d, did tc
 matrix list e(b_LATE)
 ```
 

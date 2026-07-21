@@ -20,7 +20,9 @@
 #' @param lqte Logical; compute local quantile treatment effects.
 #' @param newcateg Optional numeric vector of upper bounds used to recategorize
 #'   treatment values for TC/CIC.
-#' @param numerator Logical; return estimator numerators for DID/TC/CIC.
+#' @param numerator Logical; return the reduced-form estimator numerators for
+#'   DID/TC/CIC. As in Stata's \code{fuzzydid}, this is only defined for a single
+#'   two-period, two-group design and errors otherwise.
 #' @param partial Logical; request TC partial-identification bounds.
 #' @param nose Logical; skip bootstrap standard errors and confidence intervals.
 #' @param cluster Optional name of cluster variable for one-way clustered
@@ -581,6 +583,15 @@ fuzzydid <- function(
   out
 }
 
+# Exponent vectors for every monomial in `p` variables with total degree in
+# 1..order, sorted by ascending total degree for stable column naming.
+.monomial_exponents <- function(p, order) {
+  grid <- as.matrix(do.call(expand.grid, rep(list(seq.int(0L, order)), p)))
+  degree <- rowSums(grid)
+  grid <- grid[degree >= 1L & degree <= order, , drop = FALSE]
+  grid[order(rowSums(grid)), , drop = FALSE]
+}
+
 .build_feature_frame <- function(df, continuous, qualitative, order = 1L) {
   out <- data.frame(.row_id = seq_len(nrow(df)))
   order <- as.integer(order)
@@ -589,11 +600,24 @@ fuzzydid <- function(
   }
 
   if (length(continuous) > 0L) {
-    for (v in continuous) {
-      x <- as.numeric(df[[v]])
-      for (p in seq_len(order)) {
-        out[[sprintf("%s_p%s", v, p)]] <- x^p
+    xs <- lapply(continuous, function(v) as.numeric(df[[v]]))
+
+    # Total-degree polynomial (tensor) basis: every monomial in the continuous
+    # covariates with total degree 1..order, including cross-products such as
+    # x1*x2. This matches Stata fuzzydid's Legendre sieve span; raw powers vs.
+    # orthonormal Legendre give identical OLS fits, so only the span matters.
+    exps <- .monomial_exponents(length(continuous), order)
+    for (r in seq_len(nrow(exps))) {
+      e <- exps[r, ]
+      term <- rep(1, nrow(df))
+      parts <- character(0)
+      for (j in seq_along(continuous)) {
+        if (e[[j]] > 0L) {
+          term <- term * xs[[j]]^e[[j]]
+          parts <- c(parts, sprintf("%s%d", continuous[[j]], e[[j]]))
+        }
       }
+      out[[paste0("m_", paste(parts, collapse = "_"))]] <- term
     }
   }
 
@@ -619,19 +643,26 @@ fuzzydid <- function(
 }
 
 .max_sieve_order <- function(df, cov_types) {
-  n_obs <- nrow(df)
   n_cont <- length(cov_types$continuous)
   if (n_cont == 0L) {
     return(NA_integer_)
   }
 
-  cap <- .sieve_basis_cap(n_obs)
-  n_qual_terms <- ncol(.build_feature_frame(df, character(0), cov_types$qualitative, order = 1L))
-  room <- cap - n_qual_terms
-  if (room < n_cont) {
-    return(NA_integer_)
+  # The tensor basis grows as choose(n_cont + order, order) - 1, so step the
+  # order up until the basis would exceed the cap and return the last order
+  # that fits.
+  cap <- .sieve_basis_cap(nrow(df))
+  best <- NA_integer_
+  order <- 1L
+  repeat {
+    n_terms <- ncol(.build_feature_frame(df, cov_types$continuous, cov_types$qualitative, order = order))
+    if (n_terms > cap) {
+      break
+    }
+    best <- order
+    order <- order + 1L
   }
-  as.integer(floor(room / n_cont))
+  best
 }
 
 .ensure_sieve_basis_within_cap <- function(df, cov_types, y_order, d_order) {
@@ -1057,7 +1088,9 @@ fuzzydid <- function(
   m_y10 <- .fit_predict_mean(y[idx10], x_y[idx10, , drop = FALSE], x_y[idx11, , drop = FALSE], methods$y)
   m_d10 <- .fit_predict_mean(d_true[idx10], x_d[idx10, , drop = FALSE], x_d[idx11, , drop = FALSE], methods$d1)
   special_case <- length(unique(d_tc[g == 0])) == 1L
-  need_did_components <- opts$did || (opts$tc && special_case)
+  # The DID denominator anchors the multi-period aggregation weight for every
+  # estimator, so compute the DID components whenever any estimator is requested.
+  need_did_components <- TRUE
 
   out <- list(
     did_num = NA_real_,
@@ -1089,12 +1122,16 @@ fuzzydid <- function(
 
   if (opts$tc) {
     if (special_case) {
+      # In the sharp-for-controls case TC coincides with DID. If the
+      # covariate-adjusted DID components are non-finite, report a missing
+      # estimate rather than silently dropping the control counterfactual
+      # (which would change the estimand). Matches the no-cov contract.
       if (is.finite(out$did_num) && is.finite(out$did_den)) {
         out$tc_num <- out$did_num
         out$tc_den <- out$did_den
       } else {
-        out$tc_num <- m_y11 - m_y10
-        out$tc_den <- m_d11 - m_d10
+        out$tc_num <- NA_real_
+        out$tc_den <- NA_real_
       }
     } else {
       levels_10 <- sort(unique(d_tc[idx10]))
@@ -1240,68 +1277,111 @@ fuzzydid <- function(
   as.numeric(val[[1L]])
 }
 
-.extract_weight <- function(x) {
-  val <- x[["aggregation_weight"]]
-  if (is.null(val) || length(val) == 0L || !is.finite(val[[1L]])) {
-    return(1)
+# Post-period switcher-cell count n11 of a subdesign (aggregation weight base).
+.extract_n11 <- function(x) {
+  cnt <- x[["counts"]]
+  if (is.null(cnt) || is.null(cnt[["n11"]])) {
+    return(NA_real_)
+  }
+  as.numeric(cnt[["n11"]])
+}
+
+# Design sign s_g in {-1, +1}: increasing vs. decreasing switcher arm.
+.extract_sign <- function(x) {
+  val <- x[["sign"]]
+  if (is.null(val) || length(val) == 0L || !is.finite(val[[1L]]) || val[[1L]] == 0) {
+    return(NA_real_)
   }
   as.numeric(val[[1L]])
 }
 
-.den_orientation <- function(den) {
-  ifelse(den < 0, -1, 1)
+# Weighted average of the per-subdesign Wald ratios num/den, matching Stata
+# fuzzydid (estim_wrapper): each subdesign is weighted by `base_w`, and the same
+# weight -- anchored on the DID denominator -- is used for DID, TC and CIC.
+.aggregate_wald <- function(num, den, base_w) {
+  keep <- is.finite(base_w) & is.finite(num) & is.finite(den) & den != 0
+  if (!any(keep)) {
+    return(NA_real_)
+  }
+  total <- sum(base_w[keep])
+  if (!is.finite(total) || total == 0) {
+    return(NA_real_)
+  }
+  sum(base_w[keep] * (num[keep] / den[keep])) / total
+}
+
+# Weighted average of already-computed per-subdesign values (e.g. partial-id
+# bounds), using the same base weight as .aggregate_wald.
+.aggregate_mean <- function(vals, base_w) {
+  keep <- is.finite(base_w) & is.finite(vals)
+  if (!any(keep)) {
+    return(NA_real_)
+  }
+  total <- sum(base_w[keep])
+  if (!is.finite(total) || total == 0) {
+    return(NA_real_)
+  }
+  sum(base_w[keep] * vals[keep]) / total
 }
 
 .aggregate_late <- function(pair_results, opts) {
   late <- numeric(0)
-  weights <- vapply(pair_results, .extract_weight, numeric(1))
+
+  n11 <- vapply(pair_results, .extract_n11, numeric(1))
+  signs <- vapply(pair_results, .extract_sign, numeric(1))
+  did_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "did_den")
+
+  # Common subdesign weight w = did_den * n11 * sign. The DID denominator anchors
+  # the weighting for every estimator, so a subdesign with a missing/degenerate
+  # DID denominator drops out of TC and CIC too, exactly as in Stata fuzzydid.
+  base_w <- did_den * n11 * signs
 
   if (opts$did) {
     did_num <- vapply(pair_results, .extract_scalar, numeric(1), name = "did_num")
-    did_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "did_den")
-    keep <- is.finite(did_num) & is.finite(did_den) & did_den != 0 & weights > 0
-    if (!any(keep)) {
-      stop("Given the data structure, impossible to estimate DID.", call. = FALSE)
-    }
-
-    orient <- .den_orientation(did_den[keep])
     if (opts$numerator) {
+      # numerator() is a reduced-form placebo check that Stata restricts to two
+      # periods and two groups, i.e. a single subdesign, returned unscaled.
+      keep <- is.finite(did_num) & is.finite(did_den) & did_den != 0
+      if (!any(keep)) {
+        stop("Given the data structure, impossible to estimate DID.", call. = FALSE)
+      }
       late[["DID_num"]] <- sum(did_num[keep])
     } else {
-      late[["W_DID"]] <- sum(weights[keep] * orient * did_num[keep]) /
-        sum(weights[keep] * orient * did_den[keep])
+      est <- .aggregate_wald(did_num, did_den, base_w)
+      if (!is.finite(est)) {
+        stop("Given the data structure, impossible to estimate DID.", call. = FALSE)
+      }
+      late[["W_DID"]] <- est
     }
   }
 
   if (opts$tc || opts$partial) {
+    tc_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_den")
     if (opts$partial) {
       tc_inf <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_inf")
       tc_sup <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_sup")
-      tc_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_den")
-      keep <- is.finite(tc_inf) & is.finite(tc_sup) & is.finite(tc_den) & tc_den != 0 & weights > 0
-      if (!any(keep)) {
+      inf_est <- .aggregate_mean(tc_inf, base_w)
+      sup_est <- .aggregate_mean(tc_sup, base_w)
+      if (!is.finite(inf_est) || !is.finite(sup_est)) {
         stop("Given the data structure, partial cannot be estimated.", call. = FALSE)
       }
-      den_weight <- weights[keep] * abs(tc_den[keep])
-      inf_est <- sum(tc_inf[keep] * den_weight) / sum(den_weight)
-      sup_est <- sum(tc_sup[keep] * den_weight) / sum(den_weight)
       bounds <- sort(c(inf_est, sup_est))
       late[["TC_inf"]] <- bounds[[1L]]
       late[["TC_sup"]] <- bounds[[2L]]
     } else {
       tc_num <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_num")
-      tc_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "tc_den")
-      keep <- is.finite(tc_num) & is.finite(tc_den) & tc_den != 0 & weights > 0
-      if (!any(keep)) {
-        stop("Given the data structure, impossible to estimate TC.", call. = FALSE)
-      }
-
-      orient <- .den_orientation(tc_den[keep])
       if (opts$numerator) {
+        keep <- is.finite(tc_num) & is.finite(tc_den) & tc_den != 0
+        if (!any(keep)) {
+          stop("Given the data structure, impossible to estimate TC.", call. = FALSE)
+        }
         late[["TC_num"]] <- sum(tc_num[keep])
       } else {
-        late[["W_TC"]] <- sum(weights[keep] * orient * tc_num[keep]) /
-          sum(weights[keep] * orient * tc_den[keep])
+        est <- .aggregate_wald(tc_num, tc_den, base_w)
+        if (!is.finite(est)) {
+          stop("Given the data structure, impossible to estimate TC.", call. = FALSE)
+        }
+        late[["W_TC"]] <- est
       }
     }
   }
@@ -1309,17 +1389,18 @@ fuzzydid <- function(
   if (opts$cic) {
     cic_num <- vapply(pair_results, .extract_scalar, numeric(1), name = "cic_num")
     cic_den <- vapply(pair_results, .extract_scalar, numeric(1), name = "cic_den")
-    keep <- is.finite(cic_num) & is.finite(cic_den) & cic_den != 0 & weights > 0
-    if (!any(keep)) {
-      stop("Given the data structure, impossible to estimate CIC.", call. = FALSE)
-    }
-
-    orient <- .den_orientation(cic_den[keep])
     if (opts$numerator) {
+      keep <- is.finite(cic_num) & is.finite(cic_den) & cic_den != 0
+      if (!any(keep)) {
+        stop("Given the data structure, impossible to estimate CIC.", call. = FALSE)
+      }
       late[["CIC_num"]] <- sum(cic_num[keep])
     } else {
-      late[["W_CIC"]] <- sum(weights[keep] * orient * cic_num[keep]) /
-        sum(weights[keep] * orient * cic_den[keep])
+      est <- .aggregate_wald(cic_num, cic_den, base_w)
+      if (!is.finite(est)) {
+        stop("Given the data structure, impossible to estimate CIC.", call. = FALSE)
+      }
+      late[["W_CIC"]] <- est
     }
   }
 
@@ -1337,6 +1418,12 @@ fuzzydid <- function(
       "With more than two time periods, both backward and forward group identifiers must be used.",
       call. = FALSE
     )
+  }
+
+  # Match Stata fuzzydid: the reduced-form numerator is only defined for a
+  # single two-period, two-group contribution.
+  if (opts$numerator && length(time_vals) != 2L) {
+    stop("`numerator` can only be used with two time periods.", call. = FALSE)
   }
 
   if (is.null(prepared$group_forward)) {
@@ -1449,6 +1536,15 @@ fuzzydid <- function(
     }
   }
 
+  if (opts$numerator) {
+    for (pair_df in pair_frames) {
+      signs <- sort(unique(pair_df$.g_star[pair_df$.g_star != 0 & pair_df$.g_star != -3]))
+      if (length(signs) != 1L) {
+        stop("`numerator` can only be used with two treatment groups.", call. = FALSE)
+      }
+    }
+  }
+
   if (opts$partial) {
     for (pair_df in pair_frames) {
       signs <- sort(unique(pair_df$.g_star[pair_df$.g_star != 0 & pair_df$.g_star != -3]))
@@ -1498,7 +1594,6 @@ fuzzydid <- function(
       est$pair_id <- sub$pair_id
       est$sign <- sub$sign
       est$counts <- sub$counts
-      est$aggregation_weight <- as.numeric(sub$counts[["n11"]] + sub$counts[["n10"]])
       pair_results[[length(pair_results) + 1L]] <- est
       if (!is.null(est$sieveorder_selected)) {
         sieve_selection <- est$sieveorder_selected

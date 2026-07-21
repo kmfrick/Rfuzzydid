@@ -283,24 +283,85 @@ test_that("aggregation weights and orients increasing and decreasing arms", {
   expect_equal(did, 2.5, tolerance = 1e-12)
 })
 
-test_that("numerator outputs retain reduced-form signs", {
-  df <- make_mixed_direction_fixture()
+test_that("aggregation orients by design sign, not the estimated first stage", {
+  # Decreasing arm (sign = -1) whose estimated first stage came out positive
+  # (did_den = 0.5), as can happen with a weak/noisy first stage. The design
+  # sign must drive the weight base_w = did_den * n11 * sign, not the sign of
+  # the estimated denominator.
+  pair_results <- list(
+    list(did_num = 1, did_den = 1, counts = c(n11 = 20), sign = 1),
+    list(did_num = -1.5, did_den = 0.5, counts = c(n11 = 60), sign = -1)
+  )
+  opts <- list(did = TRUE, numerator = FALSE, tc = FALSE, partial = FALSE, cic = FALSE)
 
-  fit <- fuzzydid(
-    data = df,
-    formula = y ~ d,
-    group = "gb",
-    group_forward = "gf",
-    time = "t",
-    did = TRUE,
-    tc = TRUE,
-    numerator = TRUE,
-    nose = TRUE
+  agg <- Rfuzzydid:::.aggregate_late(pair_results, opts)
+
+  # base_w = (20, -30); W_pair = (1, -3):
+  # (20*1 + -30*-3) / (20 + -30) = 110 / -10 = -11.
+  # Using the estimated-den sign (+1 for both) would give -70/50 = -1.4.
+  expect_equal(agg[["W_DID"]], -11, tolerance = 1e-12)
+})
+
+test_that("covariate special-case returns NA rather than a treated-only estimand", {
+  # Control group observed only pre-period, so the covariate-adjusted DID
+  # components are non-finite while special_case still holds. The estimate must
+  # be missing, not the treated-only before/after change m_y11 - m_y10.
+  sub <- data.frame(
+    y = c(1, 2, 3, 4, 5, 6, 2, 3, 4),
+    d_true = c(0, 0, 0, 0, 0, 0, 1, 1, 1),
+    d_tc = c(0, 0, 0, 0, 0, 0, 1, 1, 1),
+    x = c(-1, 0, 1, -1, 0, 1, -1, 0, 1),
+    .g_binary = c(0, 0, 0, 1, 1, 1, 1, 1, 1),
+    .t_binary = c(0, 0, 0, 0, 0, 0, 1, 1, 1)
+  )
+  opts <- list(modelx = NULL, sieves = FALSE, sieveorder = NULL, did = FALSE, tc = TRUE)
+
+  est <- Rfuzzydid:::.estimate_pair_with_cov(
+    sub, "y", "d_true", "d_tc",
+    list(continuous = "x", qualitative = character(0)), opts
   )
 
-  nums <- setNames(fit$late$estimate, fit$late$estimator)
-  expect_equal(nums[["DID_num"]], -2, tolerance = 1e-12)
-  expect_equal(nums[["TC_num"]], -2, tolerance = 1e-12)
+  expect_true(est$special_case)
+  expect_true(is.na(est$tc_num))
+  expect_true(is.na(est$tc_den))
+})
+
+test_that("numerator is rejected with more than two treatment groups", {
+  # Stata restricts the reduced-form numerator to a single two-group
+  # contribution; the mixed fixture has an increasing and a decreasing arm.
+  df <- make_mixed_direction_fixture()
+
+  expect_error(
+    fuzzydid(
+      data = df,
+      formula = y ~ d,
+      group = "gb",
+      group_forward = "gf",
+      time = "t",
+      did = TRUE,
+      numerator = TRUE,
+      nose = TRUE
+    ),
+    "two treatment groups"
+  )
+})
+
+test_that("numerator is rejected with more than two time periods", {
+  df <- make_group_forward_fixture()
+
+  expect_error(
+    fuzzydid(
+      data = df,
+      formula = y ~ d,
+      group = "gb",
+      group_forward = "gf",
+      time = "t",
+      did = TRUE,
+      numerator = TRUE,
+      nose = TRUE
+    ),
+    "two time periods"
+  )
 })
 
 test_that("numerator outputs are not scaled by cell counts", {

@@ -118,6 +118,108 @@ test_that("Rfuzzydid matches frozen parity goldens on partial bounds", {
   )
 })
 
+# Deterministic, deliberately UNBALANCED multi-period fixture: three periods,
+# one increasing switcher arm plus control, with switcher cell sizes that differ
+# across the two consecutive-period pairs. This is what distinguishes the
+# post-period (n11) aggregation weight from the wrong n11+n10 weight, and the
+# weighted-average-of-ratios TC/CIC aggregation from ratio-of-sums.
+make_multiperiod_parity_fixture <- function() {
+  mk <- function(gb, gf, t, n, ones, ybase) {
+    d <- c(rep.int(1L, ones), rep.int(0L, n - ones))
+    data.frame(
+      y = ybase + 1.5 * d + 0.3 * t,
+      d = d, gb = gb, gf = gf, t = as.integer(t)
+    )
+  }
+
+  rbind(
+    mk(0L, 0L, 0L, 40L, 8L, 0.0),
+    mk(0L, 0L, 1L, 50L, 15L, 0.0),
+    mk(0L, 0L, 2L, 60L, 27L, 0.0),
+    mk(0L, 1L, 0L, 20L, 2L, 0.5),
+    mk(1L, 1L, 1L, 55L, 33L, 0.9),
+    mk(1L, 0L, 2L, 35L, 31L, 1.2)
+  )
+}
+
+# Recovered from Stata `fuzzydid y gb gf t d, did tc cic` (ssc version).
+stata_multiperiod_golden <- c(
+  W_DID = 2.7149533,
+  W_TC = 2.3443925,
+  W_CIC = 3.7261682
+)
+
+test_that("Rfuzzydid matches frozen Stata goldens on an unbalanced multi-period design", {
+  df <- make_multiperiod_parity_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d,
+    group = "gb",
+    group_forward = "gf",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    cic = TRUE,
+    nose = TRUE
+  )
+
+  r_est <- setNames(fit$late$estimate, fit$late$estimator)
+  expect_equal(
+    unname(r_est[names(stata_multiperiod_golden)]),
+    unname(stata_multiperiod_golden),
+    tolerance = 1e-6
+  )
+})
+
+# Two continuous covariates whose effect on the outcome includes an x1*x2
+# interaction, so an additive sieve cannot fit it but a total-degree (tensor)
+# sieve can. Distinguishes the two sieve bases.
+make_sieve_parity_fixture <- function() {
+  mk <- function(g, t, n, ones) {
+    id <- seq_len(n)
+    d <- c(rep.int(1L, ones), rep.int(0L, n - ones))
+    x1 <- sin(id / 7) + 0.5 * t
+    x2 <- cos(id / 5) - 0.3 * g
+    y <- 1 + 0.4 * t + 1.3 * d + 0.6 * x1 - 0.5 * x2 + 0.8 * x1 * x2
+    data.frame(y = y, d = d, x1 = x1, x2 = x2, g = as.integer(g), t = as.integer(t))
+  }
+
+  rbind(
+    mk(0L, 0L, 60L, 12L),
+    mk(0L, 1L, 60L, 20L),
+    mk(1L, 0L, 60L, 18L),
+    mk(1L, 1L, 60L, 45L)
+  )
+}
+
+# Recovered from Stata `fuzzydid y g t d, did tc continuous(x1 x2) sieves
+# sieveorder(2 2)`. Both recover the true treatment effect (1.3).
+stata_sieve_golden <- c(W_DID = 1.2999999, W_TC = 1.2999997)
+
+test_that("Rfuzzydid matches Stata on a two-covariate sieve with an interaction", {
+  df <- make_sieve_parity_fixture()
+
+  fit <- fuzzydid(
+    data = df,
+    formula = y ~ d + x1 + x2,
+    group = "g",
+    time = "t",
+    did = TRUE,
+    tc = TRUE,
+    sieves = TRUE,
+    sieveorder = 2L,
+    nose = TRUE
+  )
+
+  r_est <- setNames(fit$late$estimate, fit$late$estimator)
+  expect_equal(
+    unname(r_est[names(stata_sieve_golden)]),
+    unname(stata_sieve_golden),
+    tolerance = 1e-6
+  )
+})
+
 test_that("clustered bootstrap diagnostics are reproducible under a fixed user seed", {
   df <- make_parity_fixture()
 

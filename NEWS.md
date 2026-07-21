@@ -1,3 +1,25 @@
+# Rfuzzydid 1.3.0
+
+- Fixed multi-period aggregation of `W_DID`, `W_TC` and `W_CIC` to match Stata
+  `fuzzydid`. Contributions are now weighted by the post-period switcher-cell
+  count (`n11`, not `n11 + n10`) and the design sign of the switcher arm, and
+  `W_TC`/`W_CIC` are weighted averages of the per-subdesign Wald ratios (anchored
+  on the DID denominator) rather than ratios of summed numerators/denominators.
+  Results now reproduce Stata to 1e-6 on unbalanced multi-period designs; the
+  previous behavior differed on any unbalanced or multi-arm panel.
+- Fixed the `sieves = TRUE` basis for two or more continuous covariates: it now
+  uses a total-degree polynomial (including cross-products such as `x1 * x2`),
+  matching Stata's Legendre sieve span. The previous additive-only basis omitted
+  interactions and could not recover interaction effects.
+- The covariate-adjusted stable-control (`special_case`) path now returns a
+  missing `TC` estimate when the adjusted DID components are non-finite, instead
+  of silently falling back to a treated-only before/after change.
+- `numerator = TRUE` now matches Stata by erroring unless the design has exactly
+  two time periods and two treatment groups (the only case in which the
+  reduced-form numerator is defined).
+- Added frozen Stata-parity regression tests for the unbalanced multi-period and
+  two-covariate sieve designs.
+
 # Rfuzzydid 1.2.1
 
 - `broom` is now in `Depends`, so `library(Rfuzzydid)` attaches it

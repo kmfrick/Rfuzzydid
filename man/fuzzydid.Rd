@@ -52,7 +52,9 @@ multi-period designs.}
 \item{newcateg}{Optional numeric vector of upper bounds used to recategorize
 treatment values for TC/CIC.}
 
-\item{numerator}{Logical; return estimator numerators for DID/TC/CIC.}
+\item{numerator}{Logical; return the reduced-form estimator numerators for
+DID/TC/CIC. As in Stata's \code{fuzzydid}, this is only defined for a single
+two-period, two-group design and errors otherwise.}
 
 \item{partial}{Logical; request TC partial-identification bounds.}
 

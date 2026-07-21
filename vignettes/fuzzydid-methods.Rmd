@@ -69,7 +69,9 @@ detail.
 The Stata companion recommends using equality tests and placebo-style numerator
 checks when the design allows them. In `Rfuzzydid`, use `eqtest = TRUE` when at
 least two LATE estimators are requested. Use `numerator = TRUE` for reduced-form
-placebo checks in periods where the treatment first stage should be zero.
+placebo checks in periods where the treatment first stage should be zero; as in
+Stata's `fuzzydid`, this is only defined for a single two-period, two-group
+design.
 
 # Basic R workflow
 
