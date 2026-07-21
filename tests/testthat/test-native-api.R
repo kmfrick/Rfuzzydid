@@ -233,7 +233,60 @@ test_that("bootstrap summary drops Stata sentinel reps", {
 
   calc_boot_summary <- getFromNamespace(".calc_boot_summary", "Rfuzzydid")
   out <- calc_boot_summary(reps)
+
+  # Failed reps are dropped for the SE...
   expect_equal(out$se, c(stats::sd(c(1, 3)), stats::sd(c(2, 4))), tolerance = 1e-12)
+
+  # ...but retained for the percentile CI, so the sentinel widens the interval.
+  expect_gt(out$ci[1, 2], 100)
+  expect_lt(out$ci[2, 1], -100)
+})
+
+# Treated baseline treatment takes values {0, 1, 2}; control takes {0, 1} so
+# special_case is FALSE. When control also lacks d == 2, the treated baseline
+# stratum d == 2 has no control support and Wald-CIC is non-estimable.
+make_cic_support_fixture <- function(control_has_d2) {
+  ctrl <- rbind(
+    data.frame(g = 0L, t = 0L, d = c(0, 0, 1, 1), y = c(1, 2, 5, 6)),
+    data.frame(g = 0L, t = 1L, d = c(0, 0, 1, 1), y = c(2, 3, 6, 7))
+  )
+  if (control_has_d2) {
+    ctrl <- rbind(
+      ctrl,
+      data.frame(g = 0L, t = 0L, d = c(2, 2), y = c(9, 10)),
+      data.frame(g = 0L, t = 1L, d = c(2, 2), y = c(10, 11))
+    )
+  }
+  treated <- rbind(
+    data.frame(g = 1L, t = 0L, d = c(0, 1, 2, 2), y = c(1, 5, 9, 10)),
+    data.frame(g = 1L, t = 1L, d = c(2, 2, 2, 2), y = c(3, 7, 11, 12))
+  )
+  rbind(ctrl, treated)
+}
+
+test_that("Wald-CIC is non-estimable when a treated stratum lacks control support", {
+  expect_error(
+    fuzzydid(
+      data = make_cic_support_fixture(control_has_d2 = FALSE),
+      formula = y ~ d,
+      group = "g",
+      time = "t",
+      cic = TRUE,
+      nose = TRUE
+    ),
+    "impossible to estimate CIC"
+  )
+
+  fit_ok <- fuzzydid(
+    data = make_cic_support_fixture(control_has_d2 = TRUE),
+    formula = y ~ d,
+    group = "g",
+    time = "t",
+    cic = TRUE,
+    nose = TRUE
+  )
+  cic_ok <- fit_ok$late$estimate[fit_ok$late$estimator == "W_CIC"]
+  expect_true(is.finite(cic_ok))
 })
 
 test_that("counterfactual inverse maps below-support ranks to negative infinity", {

@@ -1,5 +1,16 @@
 # Rfuzzydid 1.3.0
 
+- Fixed bootstrap percentile confidence intervals to match Stata `fuzzydid`:
+  failed replications (carrying a sentinel value) are dropped when computing the
+  bootstrap standard error but retained when computing the percentile interval,
+  so their extreme values widen the interval under weak support. The previous
+  behavior discarded them for both, producing intervals that were too narrow
+  whenever `share_failures > 0`.
+- `W_CIC` is now reported as non-estimable (an informative error, rather than a
+  finite estimate over the remaining strata) when a positive-mass treated
+  baseline treatment stratum has no control-group support and thus an undefined
+  quantile map. The previous behavior silently dropped the unsupported stratum,
+  changing the estimand and reweighting the supported strata.
 - Fixed multi-period aggregation of `W_DID`, `W_TC` and `W_CIC` to match Stata
   `fuzzydid`. Contributions are now weighted by the post-period switcher-cell
   count (`n11`, not `n11 + n10`) and the design sign of the switcher arm, and

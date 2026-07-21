@@ -1040,7 +1040,12 @@ fuzzydid <- function(
       q_vals <- c(q_vals, mapped)
     }
 
-    out$cic_num <- m_y11 - .safe_mean(q_vals)
+    # Q_d is undefined when a treated baseline stratum has no control support:
+    # .counterfactual_quantile_map returns NA for it. Do not average over the
+    # remaining strata (that would silently change the estimand) -- report the
+    # CIC as non-estimable instead.
+    has_gap <- any(!is.finite(q_vals))
+    out$cic_num <- if (has_gap) NA_real_ else m_y11 - .safe_mean(q_vals)
     out$cic_den <- m_d11 - m_d10
   }
 
@@ -1746,9 +1751,13 @@ fuzzydid <- function(
     return(list(se = numeric(0), ci = matrix(numeric(0), ncol = 2)))
   }
 
-  reps <- .recode_bootstrap_sentinel(reps)
+  # Failed reps carry a +/- sentinel: dropped (NA) for the standard error but
+  # RETAINED for the percentile CI, so their extreme values widen the interval
+  # when weak support makes some bootstrap estimates undefined -- matching Stata
+  # fuzzydid.
+  clean <- .recode_bootstrap_sentinel(reps)
 
-  se <- apply(reps, 2, function(x) {
+  se <- apply(clean, 2, function(x) {
     if (all(is.na(x))) return(NA_real_)
     stats::sd(x, na.rm = TRUE)
   })
